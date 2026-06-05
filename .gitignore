@@ -1,0 +1,28 @@
+# Maven build output
+target/
+
+# IDE - VS Code
+.vscode/settings.json
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+
+# IDE - Eclipse
+.classpath
+.project
+.settings/
+
+# Local database (user data)
+screentime.db
+
+# User personal notes
+修改
+
+# Original source image (processed icon.png is in resources/)
+image_875375713982686.png
+
+# OS files
+Thumbs.db
+.DS_Store
+*.log
