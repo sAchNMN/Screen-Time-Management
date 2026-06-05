@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21.0.11"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.screentime.controller.MonitorListController">
+
+    <top>
+        <VBox spacing="12.0">
+            <padding>
+                <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+            </padding>
+
+            <!-- 标题 -->
+            <Label text="监控软件管理"
+                   style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+            <!-- 操作栏 -->
+            <HBox spacing="10.0" alignment="CENTER_LEFT">
+                <Button fx:id="btnRefreshProcesses" text="刷新进程列表"
+                        style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 13px;"/>
+                <Button fx:id="btnAddSelected" text="添加选中的软件到监控列表"
+                        style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13px;"/>
+
+                <Separator orientation="VERTICAL" prefHeight="30.0"/>
+
+                <Label text="手动添加:"
+                       style="-fx-font-size: 13px; -fx-text-fill: #7f8c8d;"/>
+                <TextField fx:id="tfProcessName" promptText="进程名 (如 chrome.exe)"
+                           prefWidth="160.0"/>
+                <TextField fx:id="tfAppName" promptText="显示名称 (如 Google Chrome)"
+                           prefWidth="160.0"/>
+                <Button fx:id="btnManualAdd" text="添加"
+                        style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13px;"/>
+            </HBox>
+        </VBox>
+    </top>
+
+    <center>
+        <SplitPane fx:id="splitPane" orientation="VERTICAL" dividerPositions="0.5"
+                   style="-fx-background-color: #ecf0f1;">
+            <padding>
+                <Insets top="8.0" right="8.0" bottom="8.0" left="8.0"/>
+            </padding>
+
+            <!-- 上方：系统运行进程列表 -->
+            <VBox spacing="6.0">
+                <Label text="当前运行进程"
+                       style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                <ListView fx:id="lvProcessList" VBox.vgrow="ALWAYS"
+                          style="-fx-font-size: 13px;"/>
+            </VBox>
+
+            <!-- 下方：已监控的软件列表 -->
+            <VBox spacing="6.0">
+                <HBox spacing="10.0" alignment="CENTER_LEFT">
+                    <Label text="已监控的软件"
+                           style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+                    <Button fx:id="btnRemoveSelected" text="移除选中"
+                            style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-size: 12px;"/>
+                </HBox>
+                <ListView fx:id="lvMonitoredApps" VBox.vgrow="ALWAYS"
+                          style="-fx-font-size: 13px;"/>
+            </VBox>
+        </SplitPane>
+    </center>
+
+    <!-- 底部状态栏 -->
+    <bottom>
+        <HBox spacing="10.0" alignment="CENTER_LEFT"
+              style="-fx-background-color: #bdc3c7; -fx-padding: 6 12 6 12;">
+            <Label fx:id="lblStatus" text="就绪"
+                   style="-fx-font-size: 12px; -fx-text-fill: #2c3e50;"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>

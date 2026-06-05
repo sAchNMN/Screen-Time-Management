@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/21.0.11"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.screentime.controller.SettingsController"
+      spacing="12.0">
+    <padding>
+        <Insets top="12.0" right="16.0" bottom="12.0" left="16.0"/>
+    </padding>
+
+    <Label text="设置"
+           style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+    <!-- 常规设置 -->
+    <Separator/>
+
+    <VBox spacing="8.0" style="-fx-background-color: white; -fx-padding: 12; -fx-background-radius: 6;">
+        
+        <CheckBox fx:id="cbMinimizeToTray" text="关闭时最小化到系统托盘"
+                  style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+                  
+    </VBox>
+</VBox>
