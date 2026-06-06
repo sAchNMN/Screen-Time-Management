@@ -26,12 +26,6 @@ public class MonitorListController {
     @FXML
     private Button btnRemoveSelected;
     @FXML
-    private Button btnManualAdd;
-    @FXML
-    private TextField tfProcessName;
-    @FXML
-    private TextField tfAppName;
-    @FXML
     private Label lblStatus;
     @FXML
     private SplitPane splitPane;
@@ -84,7 +78,6 @@ public class MonitorListController {
         btnRefreshProcesses.setOnAction(e -> refreshProcesses());
         btnAddSelected.setOnAction(e -> addSelectedToMonitor());
         btnRemoveSelected.setOnAction(e -> removeSelected());
-        btnManualAdd.setOnAction(e -> manualAdd());
 
         // 启动时加载数据
         refreshProcesses();
@@ -187,31 +180,6 @@ public class MonitorListController {
                 return;
             }
         }
-    }
-
-    private void manualAdd() {
-        String processName = tfProcessName.getText().trim();
-        String appName = tfAppName.getText().trim();
-
-        if (processName.isEmpty()) {
-            showAlert("请输入进程名");
-            return;
-        }
-        if (appName.isEmpty()) {
-            appName = processName;
-        }
-
-        if (dao.existsByProcessName(processName)) {
-            showAlert("进程 " + processName + " 已在监控列表中");
-            return;
-        }
-
-        dao.insert(new MonitoredApp(appName, processName));
-        refreshMonitoredList();
-        setStatus("已手动添加: " + appName + " (" + processName + ")");
-
-        tfProcessName.clear();
-        tfAppName.clear();
     }
 
     private void setStatus(String msg) {

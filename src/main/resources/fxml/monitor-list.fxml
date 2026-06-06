@@ -25,16 +25,6 @@
                 <Button fx:id="btnAddSelected" text="添加选中的软件到监控列表"
                         style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13px;"/>
 
-                <Separator orientation="VERTICAL" prefHeight="30.0"/>
-
-                <Label text="手动添加:"
-                       style="-fx-font-size: 13px; -fx-text-fill: #7f8c8d;"/>
-                <TextField fx:id="tfProcessName" promptText="进程名 (如 chrome.exe)"
-                           prefWidth="160.0"/>
-                <TextField fx:id="tfAppName" promptText="显示名称 (如 Google Chrome)"
-                           prefWidth="160.0"/>
-                <Button fx:id="btnManualAdd" text="添加"
-                        style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13px;"/>
             </HBox>
         </VBox>
     </top>
