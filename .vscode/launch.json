@@ -1,4 +1,4 @@
-﻿{
+{
     "version": "0.2.0",
     "configurations": [
         {
@@ -7,7 +7,7 @@
             "request": "launch",
             "mainClass": "com.screentime.App",
             "projectName": "screen-time-management",
-            "vmArgs": "--module-path=C:\\Users\\34759\\.m2\\repository\\org\\openjfx\\javafx-controls\\21.0.11\\javafx-controls-21.0.11-win.jar;C:\\Users\\34759\\.m2\\repository\\org\\openjfx\\javafx-graphics\\21.0.11\\javafx-graphics-21.0.11-win.jar;C:\\Users\\34759\\.m2\\repository\\org\\openjfx\\javafx-base\\21.0.11\\javafx-base-21.0.11-win.jar;C:\\Users\\34759\\.m2\\repository\\org\\openjfx\\javafx-fxml\\21.0.11\\javafx-fxml-21.0.11-win.jar;C:\\Users\\34759\\.m2\\repository\\org\\openjfx\\javafx-swing\\21.0.11\\javafx-swing-21.0.11-win.jar --add-modules=javafx.controls,javafx.fxml,javafx.swing"
+            "vmArgs": "--module-path=${env:USERPROFILE}\\.m2\\repository\\org\\openjfx\\javafx-controls\\21.0.11\\javafx-controls-21.0.11-win.jar;${env:USERPROFILE}\\.m2\\repository\\org\\openjfx\\javafx-graphics\\21.0.11\\javafx-graphics-21.0.11-win.jar;${env:USERPROFILE}\\.m2\\repository\\org\\openjfx\\javafx-base\\21.0.11\\javafx-base-21.0.11-win.jar;${env:USERPROFILE}\\.m2\\repository\\org\\openjfx\\javafx-fxml\\21.0.11\\javafx-fxml-21.0.11-win.jar;${env:USERPROFILE}\\.m2\\repository\\org\\openjfx\\javafx-swing\\21.0.11\\javafx-swing-21.0.11-win.jar --add-modules=javafx.controls,javafx.fxml,javafx.swing"
         }
     ]
 }
