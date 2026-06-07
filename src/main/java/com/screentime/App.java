@@ -87,6 +87,44 @@ public class App extends Application {
         settingsDao.set("window_height", String.valueOf((int) stage.getHeight()));
     }
 
+    /**
+     * 自动扫描用户系统的字体目录，加载可渲染中文的物理字体文件。
+     * 物理字体文件加载比逻辑字体名更可靠，原生系统托盘能正确渲染。
+     */
+    private static java.awt.Font findChineseFont() {
+        // 方案1: 自动扫描 Windows 字体目录，逐一加载物理字体文件测试中文支持
+        java.io.File fontDir = new java.io.File("C:\\Windows\\Fonts");
+        if (fontDir.isDirectory()) {
+            java.io.File[] files = fontDir.listFiles(
+                    (dir, name) -> name.toLowerCase().endsWith(".ttf")
+                            || name.toLowerCase().endsWith(".ttc")
+                            || name.toLowerCase().endsWith(".otf"));
+            if (files != null) {
+                for (java.io.File file : files) {
+                    try {
+                        java.awt.Font font = java.awt.Font.createFont(
+                                java.awt.Font.TRUETYPE_FONT, file).deriveFont(12f);
+                        if (font.canDisplayUpTo("\u4e2d\u6587") == -1) {
+                            return font;
+                        }
+                    } catch (Exception ignored) { }
+                }
+            }
+        }
+
+        // 方案2: 扫描 GraphicsEnvironment 中已注册的字体
+        java.awt.Font[] allFonts = java.awt.GraphicsEnvironment
+                .getLocalGraphicsEnvironment().getAllFonts();
+        for (java.awt.Font font : allFonts) {
+            if (font.canDisplayUpTo("\u4e2d\u6587") == -1) {
+                return font.deriveFont(12f);
+            }
+        }
+
+        // 最终兜底
+        return new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 12);
+    }
+
     private void setupTray(Stage stage) {
         if (!SystemTray.isSupported()) {
             traySupported = false;
@@ -94,6 +132,12 @@ public class App extends Application {
         }
 
         try {
+            // 从物理字体文件加载中文字体
+            java.awt.Font menuFont = findChineseFont();
+            javax.swing.UIManager.put("Menu.font", menuFont);
+            javax.swing.UIManager.put("MenuItem.font", menuFont);
+            javax.swing.UIManager.put("PopupMenu.font", menuFont);
+
             // 从资源加载托盘图标
             BufferedImage image;
             try (InputStream is = getClass().getResourceAsStream("/icon.png")) {
@@ -107,19 +151,22 @@ public class App extends Application {
             // 右键弹出菜单
             PopupMenu popup = new PopupMenu();
 
-            MenuItem showItem = new MenuItem("屏幕使用时间");
+            MenuItem showItem = new MenuItem("\u5c4f\u5e55\u4f7f\u7528\u65f6\u95f4"); // 屏幕使用时间
+            showItem.setFont(menuFont);
             showItem.addActionListener(e -> Platform.runLater(() -> {
                 stage.show();
                 stage.toFront();
             }));
 
-            MenuItem exitItem = new MenuItem("\u9000\u51fa");
+            MenuItem exitItem = new MenuItem("\u9000\u51fa"); // 退出
+            exitItem.setFont(menuFont);
             exitItem.addActionListener(e -> {
                 Platform.exit();
                 SystemTray.getSystemTray().remove(trayIcon);
                 System.exit(0);
             });
 
+            popup.setFont(menuFont);
             popup.add(showItem);
             popup.addSeparator();
             popup.add(exitItem);
@@ -127,7 +174,6 @@ public class App extends Application {
             trayIcon = new TrayIcon(image, "\u5c4f\u5e55\u65f6\u95f4\u7ba1\u7406", popup);
             trayIcon.setImageAutoSize(true);
 
-            // 双击托盘图标显示窗口
             trayIcon.addActionListener(e -> Platform.runLater(() -> {
                 stage.show();
                 stage.toFront();
