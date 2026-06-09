@@ -83,11 +83,24 @@ public class MonitoredAppDao {
     }
 
     public void delete(int id) {
-        String sql = "DELETE FROM monitored_apps WHERE id = ?";
-        try (Connection conn = DatabaseUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, id);
-            ps.executeUpdate();
+        String sqlDeleteRecords = "DELETE FROM usage_records WHERE app_id = ?";
+        String sqlDeleteSummary = "DELETE FROM daily_summary WHERE app_id = ?";
+        String sqlDeleteApp = "DELETE FROM monitored_apps WHERE id = ?";
+        try (Connection conn = DatabaseUtil.getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps1 = conn.prepareStatement(sqlDeleteRecords);
+                 PreparedStatement ps2 = conn.prepareStatement(sqlDeleteSummary);
+                 PreparedStatement ps3 = conn.prepareStatement(sqlDeleteApp)) {
+                ps1.setInt(1, id); ps1.executeUpdate();
+                ps2.setInt(1, id); ps2.executeUpdate();
+                ps3.setInt(1, id); ps3.executeUpdate();
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to delete monitored app", e);
         }

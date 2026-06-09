@@ -106,6 +106,11 @@ public class App extends Application {
 
             // 右键弹出菜单
             PopupMenu popup = new PopupMenu();
+            Font trayFont = new Font("Microsoft YaHei", Font.PLAIN, 12);
+            if (!"Microsoft YaHei".equals(trayFont.getFamily())) {
+                trayFont = new Font("SimSun", Font.PLAIN, 12);
+            }
+            popup.setFont(trayFont);
 
             MenuItem showItem = new MenuItem("屏幕使用时间");
             showItem.addActionListener(e -> Platform.runLater(() -> {
