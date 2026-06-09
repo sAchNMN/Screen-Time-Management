@@ -12,6 +12,4 @@
     </padding>
     <Label text="使用统计"
            style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
-    <Label text="将在后续阶段实现"
-           style="-fx-font-size: 14px; -fx-text-fill: #95a5a6;"/>
 </VBox>

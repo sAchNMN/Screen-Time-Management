@@ -29,7 +29,7 @@ public class App extends Application {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/main.fxml"));
         Scene scene = new Scene(loader.load());
         primaryStage.setScene(scene);
-        primaryStage.setTitle("屏幕使用时间");
+        primaryStage.setTitle("屏幕时间管理");
         primaryStage.setMinWidth(900);
         primaryStage.setMinHeight(650);
 
@@ -112,13 +112,13 @@ public class App extends Application {
             }
             popup.setFont(trayFont);
 
-            MenuItem showItem = new MenuItem("屏幕使用时间");
+            MenuItem showItem = new MenuItem("屏幕时间管理");
             showItem.addActionListener(e -> Platform.runLater(() -> {
                 stage.show();
                 stage.toFront();
             }));
 
-            MenuItem exitItem = new MenuItem("\u9000\u51fa");
+            MenuItem exitItem = new MenuItem("关闭软件");
             exitItem.addActionListener(e -> {
                 Platform.exit();
                 SystemTray.getSystemTray().remove(trayIcon);
@@ -129,7 +129,7 @@ public class App extends Application {
             popup.addSeparator();
             popup.add(exitItem);
 
-            trayIcon = new TrayIcon(image, "\u5c4f\u5e55\u65f6\u95f4\u7ba1\u7406", popup);
+            trayIcon = new TrayIcon(image, "屏幕时间管理", popup);
             trayIcon.setImageAutoSize(true);
 
             // 双击托盘图标显示窗口
@@ -141,7 +141,7 @@ public class App extends Application {
             SystemTray.getSystemTray().add(trayIcon);
         } catch (Exception e) {
             traySupported = false;
-            System.err.println("\u65e0\u6cd5\u521b\u5efa\u7cfb\u7edf\u6258\u76d8\u56fe\u6807: " + e.getMessage());
+            System.err.println("无法创建系统托盘图标: " + e.getMessage());
         }
     }
 
