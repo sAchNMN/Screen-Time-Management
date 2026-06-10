@@ -1,7 +1,16 @@
+/* ============================================================
+ *  App.java — 应用主入口
+ *  职责：
+ *    - 启动 JavaFX 窗口，加载主界面 FXML
+ *    - 初始化系统托盘（最小化到托盘 / 托盘右键菜单）
+ *    - 读取/保存窗口大小（settings 表持久化）
+ *    - 管理"关闭到托盘"行为
+ * ============================================================ */
 package com.screentime;
 
 import com.screentime.controller.MainController;
 import com.screentime.dao.AppSettingsDao;
+import com.screentime.service.ForegroundMonitorService;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
@@ -60,6 +69,7 @@ public class App extends Application {
                 event.consume();
                 primaryStage.hide();
             } else {
+                ForegroundMonitorService.getInstance().stop();
                 Platform.exit();
                 System.exit(0);
             }
@@ -67,6 +77,9 @@ public class App extends Application {
 
         // 防止窗口隐藏后 JFX 自动退出
         Platform.setImplicitExit(false);
+
+        // 启动后台监控引擎
+        ForegroundMonitorService.getInstance().start();
 
         primaryStage.show();
     }
@@ -120,6 +133,7 @@ public class App extends Application {
 
             MenuItem exitItem = new MenuItem("关闭软件");
             exitItem.addActionListener(e -> {
+                ForegroundMonitorService.getInstance().stop();
                 Platform.exit();
                 SystemTray.getSystemTray().remove(trayIcon);
                 System.exit(0);
@@ -161,6 +175,7 @@ public class App extends Application {
         return image;
     }
 
+    @SuppressWarnings("unused")
     public static boolean isCloseToTray() {
         return closeToTray;
     }
@@ -169,6 +184,7 @@ public class App extends Application {
         closeToTray = value;
     }
 
+    @SuppressWarnings("unused")
     public static void main(String[] args) {
         launch(args);
     }

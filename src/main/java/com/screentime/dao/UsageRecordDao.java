@@ -80,12 +80,12 @@ public class UsageRecordDao {
                 SELECT a.id, a.app_name,
                        COALESCE(SUM(
                            CASE WHEN r.end_time IS NOT NULL THEN r.duration_seconds
-                                ELSE strftime('%s','now') - strftime('%s', r.start_time)
+                                ELSE strftime('%s','now','localtime') - strftime('%s', r.start_time, 'localtime')
                            END
                        ), 0) AS total_seconds
                 FROM monitored_apps a
                 LEFT JOIN usage_records r ON r.app_id = a.id
-                    AND date(r.start_time) = date('now')
+                    AND date(r.start_time) = date('now','localtime')
                 GROUP BY a.id, a.app_name
                 ORDER BY total_seconds DESC
                 """;
@@ -109,11 +109,11 @@ public class UsageRecordDao {
         String sql = """
                 SELECT COALESCE(SUM(
                     CASE WHEN end_time IS NOT NULL THEN duration_seconds
-                         ELSE strftime('%s','now') - strftime('%s', start_time)
+                         ELSE strftime('%s','now','localtime') - strftime('%s', start_time, 'localtime')
                     END
                 ), 0) AS total
                 FROM usage_records
-                WHERE app_id = ? AND date(start_time) = date('now')
+                WHERE app_id = ? AND date(start_time) = date('now','localtime')
                 """;
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {

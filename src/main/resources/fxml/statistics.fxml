@@ -1,15 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.layout.VBox?>
+<!-- ============================================================
+     使用统计页面 — statistics.fxml
+     展示被监控应用的使用时长：
+       上方：今日使用时长（TableView，每 15 秒自动刷新）
+       下方：历史日汇总记录（TableView）
+     由 StatisticsController 控制
+     ============================================================ -->
+
 <?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
 
 <VBox xmlns="http://javafx.com/javafx/21.0.11"
       xmlns:fx="http://javafx.com/fxml/1"
-      alignment="CENTER" spacing="12.0">
+      fx:controller="com.screentime.controller.StatisticsController"
+      spacing="12.0"
+      style="-fx-background-color: #ecf0f1;">
     <padding>
-        <Insets top="40.0" right="20.0" bottom="40.0" left="20.0"/>
+        <Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/>
     </padding>
+
     <Label text="使用统计"
-           style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #7f8c8d;"/>
+           style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+    <!-- 今日使用时长 -->
+    <VBox spacing="6.0" VBox.vgrow="ALWAYS">
+        <Label text="今日使用时长"
+               style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+        <Label fx:id="lblTodayHint" text="暂无今日使用记录"
+               style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" visible="false"/>
+        <TableView fx:id="tblToday" VBox.vgrow="ALWAYS"
+                   style="-fx-font-size: 13px;">
+            <columns>
+                <TableColumn fx:id="colTodayApp" text="应用"/>
+                <TableColumn fx:id="colTodayDuration" text="使用时长"/>
+            </columns>
+        </TableView>
+    </VBox>
+
+    <!-- 历史记录 -->
+    <VBox spacing="6.0" VBox.vgrow="ALWAYS">
+        <Label text="历史记录"
+               style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+        <Label fx:id="lblHistoryHint" text="暂无历史记录"
+               style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" visible="false"/>
+        <TableView fx:id="tblHistory" VBox.vgrow="ALWAYS"
+                   style="-fx-font-size: 13px;">
+            <columns>
+                <TableColumn fx:id="colHistoryApp" text="应用"/>
+                <TableColumn fx:id="colHistoryDate" text="日期"/>
+                <TableColumn fx:id="colHistoryDuration" text="使用时长"/>
+            </columns>
+        </TableView>
+    </VBox>
 </VBox>

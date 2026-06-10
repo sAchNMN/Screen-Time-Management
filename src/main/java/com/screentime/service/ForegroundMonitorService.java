@@ -1,32 +1,39 @@
 /* ============================================================
  *  ForegroundMonitorService.java — 前台窗口监控引擎
- *  后台定时（每15秒）检测用户当前活动窗口是否属于被监控应用：
- *    - 通过 WindowsNativeUtil 获取前台窗口进程名
+ *  后台定时检测用户当前活动窗口是否属于被监控应用：
+ *    - 通过 WindowsNativeUtil 获取前台窗口进程名和完整路径
  *    - 与内存中缓存的监控列表对比
  *    - 在焦点切换时写入 usage_records（开始/结束会话）
  *    - 每天凌晨自动将昨天数据聚合写入 daily_summary
+ *    - 轮询间隔可由用户设置（1-60 秒，默认 15 秒）
  *
  *  性能设计：
- *    - 仅 1 个守护线程，15 秒轮询间隔
+ *    - 仅 1 个守护线程
  *    - 每次轮询仅 1 次 JNA 调用 + 1 次 ProcessHandle.of()
  *    - DB 写入仅在焦点切换时发生
  *    - 监控列表缓存于内存，每 30 秒刷新一次
  * ============================================================ */
 package com.screentime.service;
 
+import com.screentime.dao.AppSettingsDao;
 import com.screentime.dao.MonitoredAppDao;
 import com.screentime.dao.UsageRecordDao;
 import com.screentime.model.MonitoredApp;
+import com.screentime.util.IconUtil;
 import com.screentime.util.WindowsNativeUtil;
 
-import java.time.LocalDate;
+import javafx.scene.image.Image;
+
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class ForegroundMonitorService {
@@ -35,6 +42,7 @@ public class ForegroundMonitorService {
 
     private final UsageRecordDao usageRecordDao = new UsageRecordDao();
     private final MonitoredAppDao monitoredAppDao = new MonitoredAppDao();
+    private final AppSettingsDao settingsDao = new AppSettingsDao();
 
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
@@ -45,14 +53,19 @@ public class ForegroundMonitorService {
 
     // 当前正在使用的被监控应用（null 表示前台不是被监控应用）
     private volatile Integer currentActiveAppId = null;
-    private volatile LocalDateTime currentSessionStart = null;
 
     // 被监控应用内存缓存
     private volatile List<MonitoredApp> cachedApps = List.of();
     private volatile LocalDateTime lastCacheRefresh = LocalDateTime.MIN;
 
-    private static final Duration POLL_INTERVAL = Duration.ofSeconds(15);
+    // 应用完整路径缓存 (appId → fullPath)，供图标提取
+    private final Map<Integer, String> appFullPathCache = new ConcurrentHashMap<>();
+
+    // 可动态调整的轮询间隔（秒）
+    private volatile int pollIntervalSeconds = 15;
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
+
+    private volatile ScheduledFuture<?> pollingTask;
 
     private boolean running = false;
 
@@ -77,16 +90,19 @@ public class ForegroundMonitorService {
 
         running = true;
 
+        // 从设置读取轮询间隔
+        try {
+            pollIntervalSeconds = Integer.parseInt(settingsDao.get("poll_interval_seconds", "15"));
+            pollIntervalSeconds = Math.max(1, Math.min(60, pollIntervalSeconds));
+        } catch (NumberFormatException e) {
+            pollIntervalSeconds = 15;
+        }
+
         monitoredAppDao.initTable();
         refreshCache();
 
-        // 主轮询任务
-        scheduler.scheduleWithFixedDelay(
-                this::poll,
-                2,                      // 首次延迟 2 秒
-                POLL_INTERVAL.getSeconds(),
-                TimeUnit.SECONDS
-        );
+        // 启动主轮询任务
+        startPolling();
 
         // 每日汇总刷新任务（每天 00:01 执行）
         long delayToMidnight = computeDelayToMidnight();
@@ -97,7 +113,7 @@ public class ForegroundMonitorService {
                 TimeUnit.SECONDS
         );
 
-        System.out.println("[ForegroundMonitorService] 监控引擎已启动，轮询间隔 " + POLL_INTERVAL.getSeconds() + " 秒");
+        System.out.println("[ForegroundMonitorService] 监控引擎已启动，轮询间隔 " + pollIntervalSeconds + " 秒");
     }
 
     /**
@@ -110,11 +126,67 @@ public class ForegroundMonitorService {
         if (currentActiveAppId != null) {
             usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
             currentActiveAppId = null;
-            currentSessionStart = null;
         }
 
         scheduler.shutdownNow();
         System.out.println("[ForegroundMonitorService] 监控引擎已停止");
+    }
+
+    // ---- 动态轮询间隔 ----
+
+    /**
+     * 设置轮询间隔（秒），会自动重启轮询任务。
+     * 有效范围 1-60。
+     */
+    public synchronized void setPollIntervalSeconds(int seconds) {
+        seconds = Math.max(1, Math.min(60, seconds));
+        if (this.pollIntervalSeconds == seconds) return;
+        this.pollIntervalSeconds = seconds;
+        settingsDao.set("poll_interval_seconds", String.valueOf(seconds));
+
+        if (running) {
+            startPolling(); // 取消旧任务，按新间隔启动
+        }
+        System.out.println("[ForegroundMonitorService] 轮询间隔已更新为 " + seconds + " 秒");
+    }
+
+    @SuppressWarnings("unused")
+    public int getPollIntervalSeconds() {
+        return pollIntervalSeconds;
+    }
+
+    private void startPolling() {
+        if (pollingTask != null) {
+            pollingTask.cancel(false);
+        }
+        pollingTask = scheduler.scheduleWithFixedDelay(
+                this::poll,
+                pollIntervalSeconds,
+                pollIntervalSeconds,
+                TimeUnit.SECONDS
+        );
+    }
+
+    // ---- 公共查询方法（供 StatisticsController 使用） ----
+
+    /**
+     * 获取某个被监控应用的图标。
+     */
+    public Image getAppIcon(int appId) {
+        String path = appFullPathCache.get(appId);
+        if (path != null) {
+            return IconUtil.getIcon(path);
+        }
+        return null;
+    }
+
+    /**
+     * 缓存某个 appId 的完整路径。
+     */
+    public void cacheAppPath(int appId, String fullPath) {
+        if (fullPath != null && !fullPath.isBlank()) {
+            appFullPathCache.put(appId, fullPath);
+        }
     }
 
     // ---- 核心轮询逻辑 ----
@@ -126,18 +198,23 @@ public class ForegroundMonitorService {
                 refreshCache();
             }
 
-            Optional<String> foregroundProcOpt = WindowsNativeUtil.getForegroundProcessName();
-            if (foregroundProcOpt.isEmpty()) {
+            Optional<WindowsNativeUtil.ForegroundProcessInfo> infoOpt =
+                    WindowsNativeUtil.getForegroundProcessInfo();
+            if (infoOpt.isEmpty()) {
                 closeCurrentSession();
                 return;
             }
 
-            String foregroundProc = foregroundProcOpt.get().toLowerCase();
+            WindowsNativeUtil.ForegroundProcessInfo info = infoOpt.get();
+            String foregroundProc = info.processName().toLowerCase();
             MonitoredApp matched = findMatch(foregroundProc);
 
             if (matched != null) {
+                // 缓存完整路径供图标提取
+                cacheAppPath(matched.getId(), info.fullPath());
+
                 // 前台窗口属于被监控应用
-                if (currentActiveAppId == null || currentActiveAppId != matched.getId()) {
+                if (currentActiveAppId == null || !currentActiveAppId.equals(matched.getId())) {
                     // 切换到新的被监控应用
                     switchToApp(matched);
                 }
@@ -162,14 +239,12 @@ public class ForegroundMonitorService {
         // 开启新会话
         usageRecordDao.startSession(app.getId(), now);
         currentActiveAppId = app.getId();
-        currentSessionStart = now;
     }
 
     private void closeCurrentSession() {
         if (currentActiveAppId != null) {
             usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
             currentActiveAppId = null;
-            currentSessionStart = null;
         }
     }
 
@@ -195,15 +270,5 @@ public class ForegroundMonitorService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime nextMidnight = now.toLocalDate().plusDays(1).atTime(LocalTime.of(0, 1));
         return Duration.between(now, nextMidnight).getSeconds();
-    }
-
-    // ---- 公共查询方法（供 StatisticsController 使用） ----
-
-    public UsageRecordDao getUsageRecordDao() {
-        return usageRecordDao;
-    }
-
-    public MonitoredAppDao getMonitoredAppDao() {
-        return monitoredAppDao;
     }
 }

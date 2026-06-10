@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<!-- ============================================================
+     设置页面 — settings.fxml
+     提供应用级偏好设置：
+       - 关闭时最小化到系统托盘（CheckBox）
+       - 后台检测频率（Spinner 1-60 秒）
+       - 统计页面刷新频率（Spinner 1-99 秒）
+     由 SettingsController 控制
+     ============================================================ -->
+
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>
@@ -7,7 +16,7 @@
 <VBox xmlns="http://javafx.com/javafx/21.0.11"
       xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.screentime.controller.SettingsController"
-      spacing="12.0">
+      spacing="16.0">
     <padding>
         <Insets top="12.0" right="16.0" bottom="12.0" left="16.0"/>
     </padding>
@@ -15,13 +24,38 @@
     <Label text="设置"
            style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
 
-    <!-- 常规设置 -->
     <Separator/>
 
-    <VBox spacing="8.0" style="-fx-background-color: white; -fx-padding: 12; -fx-background-radius: 6;">
-        
+    <!-- 常规设置 -->
+    <VBox spacing="12.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">
+        <Label text="常规" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
         <CheckBox fx:id="cbMinimizeToTray" text="关闭时最小化到系统托盘"
                   style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
-                  
     </VBox>
+
+    <!-- 监控设置 -->
+    <VBox spacing="10.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">
+        <Label text="监控" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+        <!-- 后台检测频率 -->
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Label text="后台检测频率（秒）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <Spinner fx:id="spPollInterval" prefWidth="80"
+                     editable="true" style="-fx-font-size: 13px;"/>
+            <Label text="（1-60，默认 15）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
+
+        <!-- 统计刷新频率 -->
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Label text="统计页面刷新频率（秒）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <Spinner fx:id="spStatRefreshInterval" prefWidth="80"
+                     editable="true" style="-fx-font-size: 13px;"/>
+            <Label text="（1-99，默认 15）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
+    </VBox>
+
+    <Label fx:id="lblSaveHint" style="-fx-font-size: 12px; -fx-text-fill: #27ae60;" visible="false"/>
 </VBox>

@@ -20,12 +20,18 @@ public class WindowsNativeUtil {
     }
 
     /**
-     * 获取当前前台活动窗口所属进程的可执行文件名。
-     * 例如用户正在用 Chrome，返回 "chrome.exe"。
-     *
-     * @return 可执行文件名（如 chrome.exe）；如果无法获取则返回 Optional.empty()
+     * 前台进程信息：进程名和完整路径。
      */
-    public static Optional<String> getForegroundProcessName() {
+    public record ForegroundProcessInfo(String processName, String fullPath) {
+    }
+
+    /**
+     * 获取当前前台活动窗口所属进程的可执行文件名和完整路径。
+     * 例如用户正在用 Chrome，返回 processName="chrome.exe", fullPath="C:\...\chrome.exe"
+     *
+     * @return ForegroundProcessInfo；如果无法获取则返回 Optional.empty()
+     */
+    public static Optional<ForegroundProcessInfo> getForegroundProcessInfo() {
         try {
             WinDef.HWND hwnd = User32.INSTANCE.GetForegroundWindow();
             if (hwnd == null) {
@@ -41,7 +47,10 @@ public class WindowsNativeUtil {
 
             return ProcessHandle.of(pid)
                     .flatMap(ph -> ph.info().command())
-                    .map(WindowsNativeUtil::extractFileName);
+                    .map(fullPath -> new ForegroundProcessInfo(
+                            extractFileName(fullPath),
+                            fullPath
+                    ));
         } catch (Exception e) {
             System.err.println("[WindowsNativeUtil] 获取前台窗口失败: " + e.getMessage());
             return Optional.empty();
