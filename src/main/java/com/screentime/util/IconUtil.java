@@ -1,3 +1,11 @@
+/* ============================================================
+ *  IconUtil.java — 应用图标提取工具
+ *  从 Windows 可执行文件（.exe）中提取系统图标：
+ *    - 使用 Swing FileSystemView.getSystemIcon()
+ *    - 将 Swing Icon 转为 JavaFX Image
+ *    - 带有 ConcurrentHashMap 缓存，避免重复提取
+ *    - 找不到图标时返回 16x16 占位图
+ * ============================================================ */
 package com.screentime.util;
 
 import javafx.embed.swing.SwingFXUtils;

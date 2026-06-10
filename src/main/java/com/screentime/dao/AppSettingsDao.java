@@ -1,3 +1,11 @@
+/* ============================================================
+ *  AppSettingsDao.java — 通用设置 DAO
+ *  对 app_settings 表（键值对存储）的 CRUD 操作：
+ *    - initTable(): 创建表
+ *    - get(key):    读取设置值
+ *    - set(key, value): 写入/更新设置值
+ *  当前存储的设置：close_to_tray、window_width、window_height
+ * ============================================================ */
 package com.screentime.dao;
 
 import com.screentime.util.DatabaseUtil;

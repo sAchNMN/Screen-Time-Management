@@ -1,3 +1,14 @@
+-- ============================================================
+--  schema.sql — 数据库建表 DDL
+--  包含全部 4 张业务表：
+--    - monitored_apps:  被监控的应用清单
+--    - usage_records:   单次使用时间段记录
+--    - daily_summary:   按天汇总的使用时长
+--    - app_settings:    通用键值对设置
+--  由 MonitoredAppDao.initTable() 和
+--  AppSettingsDao.initTable() 在运行时自动执行
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS monitored_apps (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     app_name    TEXT NOT NULL,

@@ -8,7 +8,6 @@
  * ============================================================ */
 package com.screentime.controller;
 
-import com.screentime.dao.AppSettingsDao;
 import com.screentime.dao.MonitoredAppDao;
 import com.screentime.dao.UsageRecordDao;
 import com.screentime.model.MonitoredApp;
@@ -58,9 +57,8 @@ public class StatisticsController {
     private Label lblHistoryHint;
 
     private final UsageRecordDao dao = new UsageRecordDao();
-    private final AppSettingsDao settingsDao = new AppSettingsDao();
-    private final ForegroundMonitorService monitorService = ForegroundMonitorService.getInstance();
     private final MonitoredAppDao monitoredAppDao = new MonitoredAppDao();
+    private final ForegroundMonitorService monitorService = ForegroundMonitorService.getInstance();
 
     private final ObservableList<TodayRow> todayRows = FXCollections.observableArrayList();
     private final ObservableList<HistoryRow> historyRows = FXCollections.observableArrayList();
@@ -73,6 +71,7 @@ public class StatisticsController {
         tblHistory.setItems(historyRows);
 
         // 今日表格 — "应用"列用自定义 cell（图标 + 名称）
+        colTodayApp.setCellValueFactory(new PropertyValueFactory<>("appName"));
         colTodayApp.setCellFactory(col -> new TableCell<>() {
             private final ImageView iconView = new ImageView();
             private final Label nameLabel = new Label();
@@ -118,23 +117,10 @@ public class StatisticsController {
 
         refreshData();
 
-        // 从设置读取统计刷新间隔
-        int refreshSeconds = getRefreshInterval();
-        refreshTimer = new Timeline(new KeyFrame(Duration.seconds(refreshSeconds), e -> refreshData()));
+        // 固定 15 秒刷新
+        refreshTimer = new Timeline(new KeyFrame(Duration.seconds(15), e -> refreshData()));
         refreshTimer.setCycleCount(Timeline.INDEFINITE);
         refreshTimer.play();
-    }
-
-    /**
-     * 重新设定刷新间隔（设置变更时从外部调用，或在下次导航时生效）。
-     */
-    private int getRefreshInterval() {
-        try {
-            int val = Integer.parseInt(settingsDao.get("stat_refresh_interval_seconds", "15"));
-            return Math.max(1, Math.min(99, val));
-        } catch (NumberFormatException e) {
-            return 15;
-        }
     }
 
     private void refreshData() {

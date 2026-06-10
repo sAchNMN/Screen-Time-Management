@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<!-- ============================================================
+     监控软件管理页面 — monitor-list.fxml
+     布局：
+       top:    标题 + 操作栏（刷新、添加按钮）
+       center: SplitPane 上下分栏
+                 上：系统当前运行进程列表
+                 下：已监控的软件列表
+       bottom: 状态栏
+     由 MonitorListController 控制
+     ============================================================ -->
+
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import javafx.geometry.Insets?>

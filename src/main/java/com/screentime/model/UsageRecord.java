@@ -1,3 +1,11 @@
+/* ============================================================
+ *  UsageRecord.java — 单次使用记录模型
+ *  记录被监控应用的一次连续使用：
+ *    - appId:          被监控应用 ID
+ *    - startTime:      本次使用开始时间
+ *    - endTime:        本次使用结束时间
+ *    - durationSeconds: 持续秒数
+ * ============================================================ */
 package com.screentime.model;
 
 import java.time.LocalDateTime;

@@ -1,3 +1,11 @@
+/* ============================================================
+ *  MonitoredAppDao.java — 被监控应用 DAO
+ *  管理三张核心业务表：
+ *    - monitored_apps: 用户添加的被监控应用清单
+ *    - usage_records:  应用单次使用时间段记录
+ *    - daily_summary:  按天统计的使用时长汇总
+ *  提供 find/insert/delete/exists 等操作方法
+ * ============================================================ */
 package com.screentime.dao;
 
 import com.screentime.model.MonitoredApp;
@@ -10,35 +18,41 @@ import java.util.List;
 public class MonitoredAppDao {
 
     public void initTable() {
-        String sql = """
-                CREATE TABLE IF NOT EXISTS monitored_apps (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    app_name    TEXT NOT NULL,
-                    process_name TEXT NOT NULL,
-                    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                
-                CREATE TABLE IF NOT EXISTS usage_records (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    app_id      INTEGER NOT NULL,
-                    start_time  TIMESTAMP NOT NULL,
-                    end_time    TIMESTAMP,
-                    duration_seconds INTEGER,
-                    FOREIGN KEY (app_id) REFERENCES monitored_apps(id)
-                );
-                
-                CREATE TABLE IF NOT EXISTS daily_summary (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    app_id      INTEGER NOT NULL,
-                    date        DATE NOT NULL,
-                    total_seconds INTEGER DEFAULT 0,
-                    FOREIGN KEY (app_id) REFERENCES monitored_apps(id),
-                    UNIQUE(app_id, date)
-                );
-                """;
+        String[] sqls = {
+            """
+            CREATE TABLE IF NOT EXISTS monitored_apps (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_name    TEXT NOT NULL,
+                process_name TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS usage_records (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id      INTEGER NOT NULL,
+                start_time  TIMESTAMP NOT NULL,
+                end_time    TIMESTAMP,
+                duration_seconds INTEGER,
+                FOREIGN KEY (app_id) REFERENCES monitored_apps(id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS daily_summary (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id      INTEGER NOT NULL,
+                date        DATE NOT NULL,
+                total_seconds INTEGER DEFAULT 0,
+                FOREIGN KEY (app_id) REFERENCES monitored_apps(id),
+                UNIQUE(app_id, date)
+            );
+            """
+        };
         try (Connection conn = DatabaseUtil.getConnection();
              Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate(sql);
+            for (String sql : sqls) {
+                stmt.executeUpdate(sql);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize database tables", e);
         }

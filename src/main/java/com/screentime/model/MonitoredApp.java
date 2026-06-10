@@ -1,3 +1,10 @@
+/* ============================================================
+ *  MonitoredApp.java — 被监控应用模型
+ *  表示用户添加的要监控的软件：
+ *    - appName:    应用显示名称（如 "Google Chrome"）
+ *    - processName: 进程名（如 "chrome.exe"）
+ *    - createdAt:  添加时间
+ * ============================================================ */
 package com.screentime.model;
 
 import java.time.LocalDateTime;

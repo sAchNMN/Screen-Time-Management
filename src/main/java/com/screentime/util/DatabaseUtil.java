@@ -1,3 +1,10 @@
+/* ============================================================
+ *  DatabaseUtil.java — SQLite 数据库连接管理
+ *  管理数据库连接：
+ *    - 自动在 %userprofile%/ScreenTime/ 目录下创建数据库文件
+ *    - 加载 SQLite JDBC 驱动
+ *    - 提供静态 getConnection() 方法供 DAO 层使用
+ * ============================================================ */
 package com.screentime.util;
 
 import java.sql.Connection;
@@ -25,6 +32,10 @@ public class DatabaseUtil {
     }
 
     private DatabaseUtil() {
+    }
+
+    public static String getDbUrl() {
+        return DB_URL;
     }
 
     public static Connection getConnection() throws SQLException {

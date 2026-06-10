@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<!-- ============================================================
+     主界面布局 — main.fxml
+     BorderPane 结构：
+       left:   左侧导航栏（VBox，三个导航按钮）
+       center: 内容区（StackPane，动态切换页面）
+     由 MainController 控制导航路由
+     ============================================================ -->
+
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.StackPane?>
