@@ -6,11 +6,6 @@
  *    - endSession():     结束最近的未关闭会话
  *    - getTodayUsage():  查询今日各应用的总使用秒数
  *    - getAllDailySummaries(): 查询所有日汇总记录
- *    - getTodayRecordCount(): 获取今日记录条数（调试用）
- *    - getTableList():   获取数据库所有表名（调试用）
- *
- *  所有涉及"今天"的查询使用参数化的 LocalDate（从 Java 传入），
- *  避免依赖 SQLite 的 date() / strftime() 时区处理和格式兼容性。
  * ============================================================ */
 package com.screentime.dao;
 
@@ -231,43 +226,6 @@ public class UsageRecordDao {
         }
 
         return total;
-    }
-
-    /**
-     * 获取今日 usage_records 的总条数（用于调试）。
-     */
-    public int getTodayRecordCount() {
-        LocalDateTime dayStart = LocalDate.now().atStartOfDay();
-        LocalDateTime dayEnd = LocalDate.now().plusDays(1).atStartOfDay();
-        String sql = "SELECT COUNT(*) FROM usage_records WHERE start_time >= ? AND start_time < ?";
-        try (Connection conn = DatabaseUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setTimestamp(1, Timestamp.valueOf(dayStart));
-            ps.setTimestamp(2, Timestamp.valueOf(dayEnd));
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
-            }
-        } catch (SQLException e) {
-        }
-        return 0;
-    }
-
-    /**
-     * 查询数据库中的所有表名（用于调试）。
-     */
-    public List<String> getTableList() {
-        List<String> tables = new ArrayList<>();
-        try (Connection conn = DatabaseUtil.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")) {
-            while (rs.next()) {
-                tables.add(rs.getString("name"));
-            }
-        } catch (SQLException e) {
-        }
-        return tables;
     }
 
     /**

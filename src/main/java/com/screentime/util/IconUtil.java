@@ -77,8 +77,8 @@ public class IconUtil {
         BufferedImage bi = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D g2d = bi.createGraphics();
         g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.setColor(new java.awt.Color(46, 204, 113));
-        g2d.fillOval(1, 1, 14, 14);
+        g2d.setColor(new java.awt.Color(231, 76, 60));
+        g2d.fillOval(5, 5, 6, 6);
         g2d.dispose();
         return SwingFXUtils.toFXImage(bi, null);
     }

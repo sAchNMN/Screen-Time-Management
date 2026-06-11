@@ -34,10 +34,6 @@ public class DatabaseUtil {
     private DatabaseUtil() {
     }
 
-    public static String getDbUrl() {
-        return DB_URL;
-    }
-
     public static Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DB_URL);
     }

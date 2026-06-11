@@ -33,8 +33,6 @@
                     style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
             <Button fx:id="btnSettings" text="设置" maxWidth="Infinity" prefHeight="36.0"
                     style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
-            <Button fx:id="btnDebug" text="调试" maxWidth="Infinity" prefHeight="36.0"
-                    style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
         </VBox>
     </left>
 

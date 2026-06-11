@@ -38,8 +38,6 @@ public class MainController {
     private Button btnHistory;
     @FXML
     private Button btnSettings;
-    @FXML
-    private Button btnDebug;
 
     private static Stage stage;
 
@@ -49,7 +47,6 @@ public class MainController {
     private static final String NAV_CHART = "chart";
     private static final String NAV_HISTORY = "history";
     private static final String NAV_SETTINGS = "settings";
-    private static final String NAV_DEBUG = "debug";
 
     @FXML
     public void initialize() {
@@ -58,14 +55,12 @@ public class MainController {
         navButtons.put(NAV_CHART, btnChart);
         navButtons.put(NAV_HISTORY, btnHistory);
         navButtons.put(NAV_SETTINGS, btnSettings);
-        navButtons.put(NAV_DEBUG, btnDebug);
 
         btnMonitorList.setOnAction(e -> navigateTo(NAV_MONITOR));
         btnStatistics.setOnAction(e -> navigateTo(NAV_STATISTICS));
         btnChart.setOnAction(e -> navigateTo(NAV_CHART));
         btnHistory.setOnAction(e -> navigateTo(NAV_HISTORY));
         btnSettings.setOnAction(e -> navigateTo(NAV_SETTINGS));
-        btnDebug.setOnAction(e -> navigateTo(NAV_DEBUG));
 
         navigateTo(NAV_MONITOR);
     }
@@ -94,7 +89,6 @@ public class MainController {
             case NAV_CHART -> "/fxml/chart.fxml";
             case NAV_HISTORY -> "/fxml/history.fxml";
             case NAV_SETTINGS -> "/fxml/settings.fxml";
-            case NAV_DEBUG -> "/fxml/debug.fxml";
             default -> "/fxml/monitor-list.fxml";
         };
 

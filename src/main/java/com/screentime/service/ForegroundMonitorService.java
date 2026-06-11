@@ -205,15 +205,6 @@ public class ForegroundMonitorService {
 
     // ---- 公共 API ----
 
-    public Integer getCurrentActiveAppId() {
-        return currentActiveAppId;
-    }
-
-    @SuppressWarnings("unused")
-    public String getAppFullPath(int appId) {
-        return appFullPathCache.get(appId);
-    }
-
     public Image getAppIcon(int appId) {
         String path = appFullPathCache.get(appId);
         if (path != null) {
