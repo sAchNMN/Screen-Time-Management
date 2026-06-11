@@ -33,24 +33,39 @@ public class MainController {
     @FXML
     private Button btnStatistics;
     @FXML
+    private Button btnChart;
+    @FXML
+    private Button btnHistory;
+    @FXML
     private Button btnSettings;
+    @FXML
+    private Button btnDebug;
 
     private static Stage stage;
 
     private final Map<String, Button> navButtons = new HashMap<>();
     private static final String NAV_MONITOR = "monitor";
     private static final String NAV_STATISTICS = "statistics";
+    private static final String NAV_CHART = "chart";
+    private static final String NAV_HISTORY = "history";
     private static final String NAV_SETTINGS = "settings";
+    private static final String NAV_DEBUG = "debug";
 
     @FXML
     public void initialize() {
         navButtons.put(NAV_MONITOR, btnMonitorList);
         navButtons.put(NAV_STATISTICS, btnStatistics);
+        navButtons.put(NAV_CHART, btnChart);
+        navButtons.put(NAV_HISTORY, btnHistory);
         navButtons.put(NAV_SETTINGS, btnSettings);
+        navButtons.put(NAV_DEBUG, btnDebug);
 
         btnMonitorList.setOnAction(e -> navigateTo(NAV_MONITOR));
         btnStatistics.setOnAction(e -> navigateTo(NAV_STATISTICS));
+        btnChart.setOnAction(e -> navigateTo(NAV_CHART));
+        btnHistory.setOnAction(e -> navigateTo(NAV_HISTORY));
         btnSettings.setOnAction(e -> navigateTo(NAV_SETTINGS));
+        btnDebug.setOnAction(e -> navigateTo(NAV_DEBUG));
 
         navigateTo(NAV_MONITOR);
     }
@@ -76,7 +91,10 @@ public class MainController {
         String fxmlFile = switch (navKey) {
             case NAV_MONITOR -> "/fxml/monitor-list.fxml";
             case NAV_STATISTICS -> "/fxml/statistics.fxml";
+            case NAV_CHART -> "/fxml/chart.fxml";
+            case NAV_HISTORY -> "/fxml/history.fxml";
             case NAV_SETTINGS -> "/fxml/settings.fxml";
+            case NAV_DEBUG -> "/fxml/debug.fxml";
             default -> "/fxml/monitor-list.fxml";
         };
 

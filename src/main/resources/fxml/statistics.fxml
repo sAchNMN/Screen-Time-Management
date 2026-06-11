@@ -2,9 +2,7 @@
 
 <!-- ============================================================
      使用统计页面 — statistics.fxml
-     展示被监控应用的使用时长：
-       上方：今日使用时长（TableView，每 15 秒自动刷新）
-       下方：历史日汇总记录（TableView）
+     展示被监控应用今日的使用时长（需手动点击刷新按钮更新数据）
      由 StatisticsController 控制
      ============================================================ -->
 
@@ -21,10 +19,14 @@
         <Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/>
     </padding>
 
-    <Label text="使用统计"
-           style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Label text="使用统计"
+               style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"
+               HBox.hgrow="ALWAYS"/>
+        <Button fx:id="btnRefresh" text="刷新数据"
+                style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 12px;"/>
+    </HBox>
 
-    <!-- 今日使用时长 -->
     <VBox spacing="6.0" VBox.vgrow="ALWAYS">
         <Label text="今日使用时长"
                style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
@@ -35,22 +37,6 @@
             <columns>
                 <TableColumn fx:id="colTodayApp" text="应用"/>
                 <TableColumn fx:id="colTodayDuration" text="使用时长"/>
-            </columns>
-        </TableView>
-    </VBox>
-
-    <!-- 历史记录 -->
-    <VBox spacing="6.0" VBox.vgrow="ALWAYS">
-        <Label text="历史记录"
-               style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
-        <Label fx:id="lblHistoryHint" text="暂无历史记录"
-               style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" visible="false"/>
-        <TableView fx:id="tblHistory" VBox.vgrow="ALWAYS"
-                   style="-fx-font-size: 13px;">
-            <columns>
-                <TableColumn fx:id="colHistoryApp" text="应用"/>
-                <TableColumn fx:id="colHistoryDate" text="日期"/>
-                <TableColumn fx:id="colHistoryDuration" text="使用时长"/>
             </columns>
         </TableView>
     </VBox>

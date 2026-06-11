@@ -27,7 +27,13 @@
                     style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 14px;"/>
             <Button fx:id="btnStatistics" text="使用统计" maxWidth="Infinity" prefHeight="36.0"
                     style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
+            <Button fx:id="btnChart" text="统计图表" maxWidth="Infinity" prefHeight="36.0"
+                    style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
+            <Button fx:id="btnHistory" text="统计历史记录" maxWidth="Infinity" prefHeight="36.0"
+                    style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
             <Button fx:id="btnSettings" text="设置" maxWidth="Infinity" prefHeight="36.0"
+                    style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
+            <Button fx:id="btnDebug" text="调试" maxWidth="Infinity" prefHeight="36.0"
                     style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;"/>
         </VBox>
     </left>

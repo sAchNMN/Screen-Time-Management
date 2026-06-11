@@ -1,10 +1,8 @@
 /* ============================================================
- *  StatisticsController.java — 使用统计页面控制器
- *  展示被监控应用的使用时长统计：
- *    - 今日使用时长（应用图标 + 名称 + 时长，定时刷新）
- *    - 历史日汇总记录
- *    - 刷新频率由用户在设置页面设定（1-99 秒，默认 15 秒）
- *  数据由后台 ForegroundMonitorService 写入
+ *  StatisticsController.java — 今日使用时长页面控制器
+ *  展示被监控应用今日的使用时长统计：
+ *    - 应用图标 + 名称 + 时长
+ *    - 点击右上角「刷新数据」按钮手动更新
  * ============================================================ */
 package com.screentime.controller;
 
@@ -14,23 +12,17 @@ import com.screentime.model.MonitoredApp;
 import com.screentime.service.ForegroundMonitorService;
 import com.screentime.util.IconUtil;
 
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
-import javafx.scene.control.Label;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
-import javafx.util.Duration;
 
-import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class StatisticsController {
@@ -41,49 +33,35 @@ public class StatisticsController {
     private TableColumn<TodayRow, String> colTodayApp;
     @FXML
     private TableColumn<TodayRow, String> colTodayDuration;
-
-    @FXML
-    private TableView<HistoryRow> tblHistory;
-    @FXML
-    private TableColumn<HistoryRow, String> colHistoryApp;
-    @FXML
-    private TableColumn<HistoryRow, String> colHistoryDate;
-    @FXML
-    private TableColumn<HistoryRow, String> colHistoryDuration;
-
     @FXML
     private Label lblTodayHint;
     @FXML
-    private Label lblHistoryHint;
+    private Button btnRefresh;
 
     private final UsageRecordDao dao = new UsageRecordDao();
     private final MonitoredAppDao monitoredAppDao = new MonitoredAppDao();
     private final ForegroundMonitorService monitorService = ForegroundMonitorService.getInstance();
 
     private final ObservableList<TodayRow> todayRows = FXCollections.observableArrayList();
-    private final ObservableList<HistoryRow> historyRows = FXCollections.observableArrayList();
-
-    private Timeline refreshTimer;
+    private final Map<Integer, Image> appIconCache = new LinkedHashMap<>();
 
     @FXML
     public void initialize() {
         tblToday.setItems(todayRows);
-        tblHistory.setItems(historyRows);
+        tblToday.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        // 今日表格 — "应用"列用自定义 cell（图标 + 名称）
+        // 今日表格：图标 + 名称
         colTodayApp.setCellValueFactory(new PropertyValueFactory<>("appName"));
         colTodayApp.setCellFactory(col -> new TableCell<>() {
             private final ImageView iconView = new ImageView();
             private final Label nameLabel = new Label();
             private final HBox box = new HBox(8, iconView, nameLabel);
-
             {
                 iconView.setFitWidth(20);
                 iconView.setFitHeight(20);
                 iconView.setPreserveRatio(true);
                 box.setAlignment(Pos.CENTER_LEFT);
             }
-
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -91,41 +69,28 @@ public class StatisticsController {
                     setGraphic(null);
                 } else {
                     TodayRow row = getTableView().getItems().get(getIndex());
-                    if (row.getIcon() != null) {
-                        iconView.setImage(row.getIcon());
-                    } else {
-                        iconView.setImage(null);
-                    }
+                    Image icon = row.getIcon();
+                    iconView.setImage(icon != null ? icon : IconUtil.getDefaultIcon());
                     nameLabel.setText(item);
                     setGraphic(box);
                 }
             }
         });
-
         colTodayDuration.setCellValueFactory(new PropertyValueFactory<>("duration"));
 
-        colHistoryApp.setCellValueFactory(new PropertyValueFactory<>("appName"));
-        colHistoryDate.setCellValueFactory(new PropertyValueFactory<>("date"));
-        colHistoryDuration.setCellValueFactory(new PropertyValueFactory<>("duration"));
-
-        // 设置列宽
         colTodayApp.prefWidthProperty().bind(tblToday.widthProperty().multiply(0.55));
         colTodayDuration.prefWidthProperty().bind(tblToday.widthProperty().multiply(0.43));
-        colHistoryApp.prefWidthProperty().bind(tblHistory.widthProperty().multiply(0.35));
-        colHistoryDate.prefWidthProperty().bind(tblHistory.widthProperty().multiply(0.30));
-        colHistoryDuration.prefWidthProperty().bind(tblHistory.widthProperty().multiply(0.33));
 
+        // 刷新按钮
+        btnRefresh.setOnAction(e -> refreshData());
+
+        // 首次加载
         refreshData();
-
-        // 固定 15 秒刷新
-        refreshTimer = new Timeline(new KeyFrame(Duration.seconds(15), e -> refreshData()));
-        refreshTimer.setCycleCount(Timeline.INDEFINITE);
-        refreshTimer.play();
     }
 
     private void refreshData() {
+        appIconCache.clear();
         refreshToday();
-        refreshHistory();
     }
 
     private void refreshToday() {
@@ -154,28 +119,6 @@ public class StatisticsController {
         }
     }
 
-    private void refreshHistory() {
-        historyRows.clear();
-        Map<String, Map<LocalDate, Integer>> summaries = dao.getAllDailySummaries();
-        if (summaries.isEmpty()) {
-            lblHistoryHint.setText("暂无历史记录");
-            lblHistoryHint.setVisible(true);
-            return;
-        }
-        lblHistoryHint.setVisible(false);
-
-        for (Map.Entry<String, Map<LocalDate, Integer>> appEntry : summaries.entrySet()) {
-            String appName = appEntry.getKey();
-            for (Map.Entry<LocalDate, Integer> dateEntry : appEntry.getValue().entrySet()) {
-                historyRows.add(new HistoryRow(
-                        appName,
-                        dateEntry.getKey().toString(),
-                        formatDuration(dateEntry.getValue())
-                ));
-            }
-        }
-    }
-
     private String getAppName(int appId) {
         for (MonitoredApp app : monitoredAppDao.findAll()) {
             if (app.getId() == appId) {
@@ -185,33 +128,34 @@ public class StatisticsController {
         return "应用 #" + appId;
     }
 
-    /**
-     * 获取应用图标：优先从监控引擎缓存获取，否则尝试用进程名搜索。
-     */
     private Image getAppIcon(int appId) {
-        // 优先从监控引擎的缓存路径获取
+        Image cached = appIconCache.get(appId);
+        if (cached != null) return cached;
+
         Image icon = monitorService.getAppIcon(appId);
         if (icon != null) {
+            appIconCache.put(appId, icon);
             return icon;
         }
 
-        // 回退：根据进程名搜索当前运行的进程
         for (MonitoredApp app : monitoredAppDao.findAll()) {
             if (app.getId() == appId) {
                 String foundPath = findProcessPath(app.getProcessName());
                 if (foundPath != null) {
                     monitorService.cacheAppPath(appId, foundPath);
-                    return monitorService.getAppIcon(appId);
+                    icon = monitorService.getAppIcon(appId);
+                    if (icon != null) {
+                        appIconCache.put(appId, icon);
+                        return icon;
+                    }
                 }
                 break;
             }
         }
-        return null;
+        appIconCache.put(appId, IconUtil.getDefaultIcon());
+        return IconUtil.getDefaultIcon();
     }
 
-    /**
-     * 在系统当前进程中搜索匹配的进程名，返回其完整路径。
-     */
     private String findProcessPath(String processName) {
         return ProcessHandle.allProcesses()
                 .flatMap(ph -> ph.info().command().stream())
@@ -224,9 +168,6 @@ public class StatisticsController {
                 .orElse(null);
     }
 
-    /**
-     * 格式化秒数为 "X 小时 Y 分钟" 或 "Y 分钟" 或 "Z 秒"
-     */
     static String formatDuration(int totalSeconds) {
         if (totalSeconds < 60) {
             return totalSeconds + " 秒";
@@ -238,8 +179,6 @@ public class StatisticsController {
         }
         return minutes + " 分钟";
     }
-
-    // ---- TableView 数据行类 ----
 
     public static class TodayRow {
         private final Image icon;
@@ -254,22 +193,6 @@ public class StatisticsController {
 
         public Image getIcon() { return icon; }
         public String getAppName() { return appName; }
-        public String getDuration() { return duration; }
-    }
-
-    public static class HistoryRow {
-        private final String appName;
-        private final String date;
-        private final String duration;
-
-        public HistoryRow(String appName, String date, String duration) {
-            this.appName = appName;
-            this.date = date;
-            this.duration = duration;
-        }
-
-        public String getAppName() { return appName; }
-        public String getDate() { return date; }
         public String getDuration() { return duration; }
     }
 }

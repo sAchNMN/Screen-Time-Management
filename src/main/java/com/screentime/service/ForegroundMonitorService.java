@@ -4,8 +4,8 @@
  *    - 通过 WindowsNativeUtil 获取前台窗口进程名和完整路径
  *    - 与内存中缓存的监控列表对比（O(1) HashMap 查找）
  *    - 在焦点切换时写入 usage_records（开始/结束会话）
+ *    - 短时停留自动丢弃（用户可自设阈值，默认 30 秒）
  *    - 每天凌晨自动将昨天数据聚合写入 daily_summary
- *    - 轮询间隔可由用户设置（1-60 秒，默认 15 秒）
  *
  *  性能设计：
  *    - 仅 1 个守护线程
@@ -47,11 +47,12 @@ public class ForegroundMonitorService {
     private final MonitoredAppDao monitoredAppDao = new MonitoredAppDao();
     private final AppSettingsDao settingsDao = new AppSettingsDao();
 
-    /* 调度器在 start() 中懒创建，stop() 后重建，不会出现 shutdown 后无法重启 */
+    /* 调度器在 start() 中懒创建，stop() 后重建 */
     private ScheduledExecutorService scheduler;
 
     // 当前正在使用的被监控应用（null 表示前台不是被监控应用）
     private volatile Integer currentActiveAppId = null;
+    private volatile LocalDateTime currentSessionStart = null;
 
     // 被监控应用内存缓存（小写进程名 → MonitoredApp，O(1) 查找）
     private volatile Map<String, MonitoredApp> cachedAppMap = Map.of();
@@ -64,8 +65,24 @@ public class ForegroundMonitorService {
     private volatile int pollIntervalSeconds = 15;
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
 
+    // 短时运行过滤阈值（秒），停留小于此值的记录自动丢弃
+    private volatile int minSessionSeconds = 30;
+
+    // 每日使用上限（分钟），0 表示不限
+    private volatile int dailyLimitMinutes = 0;
+    // 是否启用每日上限提醒
+    private volatile boolean limitEnabled = false;
+    // 休息时长（分钟）
+    private volatile int restDurationMinutes = 5;
+    // 是否正在休息中
+    private volatile boolean isResting = false;
+    // 休息结束时间
+    private volatile LocalDateTime restUntil = null;
+
     private volatile ScheduledFuture<?> pollingTask;
     private volatile ScheduledFuture<?> dailyFlushTask;
+    private volatile ScheduledFuture<?> cleanupTask;
+    private volatile ScheduledFuture<?> restEndTask;
 
     private boolean running = false;
 
@@ -82,13 +99,11 @@ public class ForegroundMonitorService {
     public synchronized void start() {
         if (running) return;
 
-        // 非 Windows 系统不支持前台窗口监控
         if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
             System.out.println("[ForegroundMonitorService] 非 Windows 系统，监控引擎未启动");
             return;
         }
 
-        // 如果 scheduler 已被 shutdown，重建一个
         if (scheduler == null || scheduler.isShutdown()) {
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "foreground-monitor");
@@ -107,21 +122,48 @@ public class ForegroundMonitorService {
             pollIntervalSeconds = 15;
         }
 
+        // 从设置读取短时运行过滤阈值
+        try {
+            minSessionSeconds = Integer.parseInt(settingsDao.get("min_session_seconds", "30"));
+            minSessionSeconds = Math.max(1, minSessionSeconds);
+        } catch (NumberFormatException e) {
+            minSessionSeconds = 30;
+        }
+
+        // 从设置读取每日使用上限
+        try {
+            dailyLimitMinutes = Integer.parseInt(settingsDao.get("daily_limit_minutes", "0"));
+            dailyLimitMinutes = Math.max(0, dailyLimitMinutes);
+        } catch (NumberFormatException e) {
+            dailyLimitMinutes = 0;
+        }
+        try {
+            restDurationMinutes = Integer.parseInt(settingsDao.get("rest_duration_minutes", "5"));
+            restDurationMinutes = Math.max(1, restDurationMinutes);
+        } catch (NumberFormatException e) {
+            restDurationMinutes = 5;
+        }
+        limitEnabled = "true".equals(settingsDao.get("limit_enabled", "false"));
+
         monitoredAppDao.initTable();
         usageRecordDao.initTable();
         refreshCache();
 
-        // 启动主轮询任务
         startPolling();
 
-        // 每日汇总刷新任务（每天 00:01 执行，带时区感知）
         long delayToMidnight = computeDelayToMidnight();
-        // 使用 scheduleWithFixedDelay 而非 scheduleAtFixedRate，
-        // 防止 flush 执行超时导致后续跳过
         dailyFlushTask = scheduler.scheduleWithFixedDelay(
                 usageRecordDao::flushYesterday,
                 delayToMidnight,
                 24 * 60 * 60,
+                TimeUnit.SECONDS
+        );
+
+        // 过期数据清理任务（每 5 分钟检查一次）
+        cleanupTask = scheduler.scheduleWithFixedDelay(
+                monitoredAppDao::cleanupExpiredNonPermanent,
+                5,
+                5 * 60,
                 TimeUnit.SECONDS
         );
 
@@ -130,13 +172,11 @@ public class ForegroundMonitorService {
 
     /**
      * 停止后台监控引擎。
-     * 先取消轮询任务，再关闭当前会话，最后 shutdown 调度器。
      */
     public synchronized void stop() {
         if (!running) return;
         running = false;
 
-        // 先取消轮询任务，防止与下面的会话关闭操作冲突
         if (pollingTask != null) {
             pollingTask.cancel(false);
             pollingTask = null;
@@ -145,12 +185,17 @@ public class ForegroundMonitorService {
             dailyFlushTask.cancel(false);
             dailyFlushTask = null;
         }
-
-        // 关闭当前会话（只执行一次）
-        if (currentActiveAppId != null) {
-            usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
-            currentActiveAppId = null;
+        if (cleanupTask != null) {
+            cleanupTask.cancel(false);
+            cleanupTask = null;
         }
+        if (restEndTask != null) {
+            restEndTask.cancel(false);
+            restEndTask = null;
+        }
+
+        // 关闭当前会话（短时过滤）
+        closeCurrentSession();
 
         if (scheduler != null && !scheduler.isShutdown()) {
             scheduler.shutdownNow();
@@ -158,68 +203,17 @@ public class ForegroundMonitorService {
         System.out.println("[ForegroundMonitorService] 监控引擎已停止");
     }
 
-    // ---- 动态轮询间隔 ----
+    // ---- 公共 API ----
 
-    /**
-     * 设置轮询间隔（秒），会自动重启轮询任务。
-     * 有效范围 1-60。
-     */
-    public synchronized void setPollIntervalSeconds(int seconds) {
-        seconds = Math.max(1, Math.min(60, seconds));
-        if (this.pollIntervalSeconds == seconds) return;
-        this.pollIntervalSeconds = seconds;
-        settingsDao.set("poll_interval_seconds", String.valueOf(seconds));
-
-        if (running && scheduler != null && !scheduler.isShutdown()) {
-            startPolling(); // 取消旧任务，按新间隔启动
-        }
-        System.out.println("[ForegroundMonitorService] 轮询间隔已更新为 " + seconds + " 秒");
-    }
-
-    @SuppressWarnings("unused")
-    public int getPollIntervalSeconds() {
-        return pollIntervalSeconds;
-    }
-
-    /**
-     * 启动/重启主轮询任务。
-     * initialDelay 设为 1 秒而非 pollIntervalSeconds，
-     * 让设置变更后能快速生效。
-     */
-    private void startPolling() {
-        if (pollingTask != null) {
-            pollingTask.cancel(false);
-        }
-        if (scheduler == null || scheduler.isShutdown()) return;
-        pollingTask = scheduler.scheduleWithFixedDelay(
-                this::poll,
-                1,                       // initialDelay = 1s (快速响应)
-                pollIntervalSeconds,     // delay between polls
-                TimeUnit.SECONDS
-        );
-    }
-
-    // ---- 公共查询方法（供 StatisticsController / SettingsController 使用） ----
-
-    /**
-     * 获取当前正在追踪的 appId（null 表示未追踪）。
-     */
     public Integer getCurrentActiveAppId() {
         return currentActiveAppId;
     }
 
-    /**
-     * 获取某个被监控应用的完整路径（用于图标提取和调试）。
-     */
+    @SuppressWarnings("unused")
     public String getAppFullPath(int appId) {
         return appFullPathCache.get(appId);
     }
 
-    /**
-     * 获取某个被监控应用的图标。
-     * IconUtil.getIcon 线程安全（内部使用 ConcurrentHashMap 缓存）。
-     * 返回的 Image 对象由 BufferedImage 直接生成，无需 FX 线程加载。
-     */
     public Image getAppIcon(int appId) {
         String path = appFullPathCache.get(appId);
         if (path != null) {
@@ -228,23 +222,123 @@ public class ForegroundMonitorService {
         return null;
     }
 
-    /**
-     * 缓存某个 appId 的完整路径。
-     */
     public void cacheAppPath(int appId, String fullPath) {
         if (fullPath != null && !fullPath.isBlank()) {
             appFullPathCache.put(appId, fullPath);
         }
     }
 
+    /**
+     * 设置短时运行过滤阈值（秒）。
+     */
+    public synchronized void setMinSessionSeconds(int seconds) {
+        seconds = Math.max(1, seconds);
+        if (this.minSessionSeconds == seconds) return;
+        this.minSessionSeconds = seconds;
+        settingsDao.set("min_session_seconds", String.valueOf(seconds));
+    }
+
+    public int getMinSessionSeconds() {
+        return minSessionSeconds;
+    }
+
+    // ---- 每日使用上限 / 休息机制 ----
+
+    public int getDailyLimitMinutes() { return dailyLimitMinutes; }
+
+    public void setDailyLimitMinutes(int minutes) {
+        minutes = Math.max(0, minutes);
+        if (this.dailyLimitMinutes == minutes) return;
+        this.dailyLimitMinutes = minutes;
+        settingsDao.set("daily_limit_minutes", String.valueOf(minutes));
+        if (minutes == 0) {
+            isResting = false;
+            restUntil = null;
+            cancelRestEndTask();
+        }
+    }
+
+    public int getRestDurationMinutes() { return restDurationMinutes; }
+
+    public void setRestDurationMinutes(int minutes) {
+        minutes = Math.max(1, minutes);
+        if (this.restDurationMinutes == minutes) return;
+        this.restDurationMinutes = minutes;
+        settingsDao.set("rest_duration_minutes", String.valueOf(minutes));
+    }
+
+    public boolean isResting() { return isResting; }
+    public LocalDateTime getRestUntil() { return restUntil; }
+    public void endRest() {
+        isResting = false;
+        restUntil = null;
+        cancelRestEndTask();
+    }
+
+    public boolean isLimitEnabled() { return limitEnabled; }
+
+    public void setLimitEnabled(boolean enabled) {
+        if (this.limitEnabled == enabled) return;
+        this.limitEnabled = enabled;
+        settingsDao.set("limit_enabled", String.valueOf(enabled));
+        if (!enabled) {
+            isResting = false;
+            restUntil = null;
+            cancelRestEndTask();
+        }
+    }
+
     // ---- 核心轮询逻辑 ----
 
     private void poll() {
-        // 启动防护：如果引擎已停止，不再执行
         if (!running) return;
 
         try {
-            // 定期刷新监控列表缓存
+            // 检查每日使用上限
+            if (limitEnabled && dailyLimitMinutes > 0) {
+                if (isResting) {
+                    if (restUntil != null && LocalDateTime.now().isAfter(restUntil)) {
+                        isResting = false;
+                        restUntil = null;
+                        cancelRestEndTask();
+                    } else {
+                        return; // 还在休息中，跳过
+                    }
+                } else {
+                    int totalSec = usageRecordDao.getTodayTotalSeconds();
+                    if (totalSec >= dailyLimitMinutes * 60) {
+                        // 达到上限，关闭会话并进入休息模式
+                        closeCurrentSession();
+                        isResting = true;
+                        restUntil = LocalDateTime.now().plusMinutes(restDurationMinutes);
+                        // 在休息结束时安排任务，立即恢复监控
+                        cancelRestEndTask();
+                        restEndTask = scheduler.schedule(
+                                () -> {
+                                    if (running && isResting) {
+                                        isResting = false;
+                                        restUntil = null;
+                                    }
+                                },
+                                restDurationMinutes,
+                                TimeUnit.MINUTES
+                        );
+                        // 弹窗提醒
+                        javafx.application.Platform.runLater(() -> {
+                            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                                    javafx.scene.control.Alert.AlertType.WARNING,
+                                    "今日已使用 " + dailyLimitMinutes + " 分钟，已达设置上限。\n\n请休息一下，"
+                                    + restDurationMinutes + " 分钟后自动恢复记录。",
+                                    javafx.scene.control.ButtonType.OK);
+                            alert.setTitle("使用时间已达上限");
+                            alert.setHeaderText("休息提醒");
+                            alert.showAndWait();
+                        });
+                        return;
+                    }
+                }
+            }
+
             if (Duration.between(lastCacheRefresh, LocalDateTime.now()).compareTo(CACHE_TTL) > 0) {
                 refreshCache();
             }
@@ -259,21 +353,15 @@ public class ForegroundMonitorService {
             WindowsNativeUtil.ForegroundProcessInfo info = infoOpt.get();
             String foregroundProc = info.processName().toLowerCase();
 
-            // O(1) HashMap 查找
             MonitoredApp matched = cachedAppMap.get(foregroundProc);
 
             if (matched != null) {
-                // 缓存完整路径供图标提取
                 cacheAppPath(matched.getId(), info.fullPath());
 
-                // 前台窗口属于被监控应用
                 if (currentActiveAppId == null || !currentActiveAppId.equals(matched.getId())) {
-                    // 切换到新的被监控应用
                     switchToApp(matched);
                 }
-                // else: 同一个应用，不做任何事
             } else {
-                // 前台窗口不属于任何被监控应用
                 closeCurrentSession();
             }
         } catch (Exception e) {
@@ -283,37 +371,64 @@ public class ForegroundMonitorService {
 
     /**
      * 切换到新的被监控应用。
+     * 如果上一会话停留时间 < minSessionSeconds，则直接删除该记录，不保留。
      */
     private void switchToApp(MonitoredApp app) {
-        System.out.println("[ForegroundMonitorService] switchToApp: 切换到应用 '" + app.getAppName() + "' (ID=" + app.getId() + ")");
         LocalDateTime now = LocalDateTime.now();
 
-        // 关闭上一个应用的会话
-        if (currentActiveAppId != null) {
-            usageRecordDao.endSession(currentActiveAppId, now);
+        // 关闭上一个应用的会话（先判断是否太短）
+        if (currentActiveAppId != null && currentSessionStart != null) {
+            long elapsed = Duration.between(currentSessionStart, now).getSeconds();
+            if (elapsed < minSessionSeconds) {
+                // 停留太短，直接丢弃这条记录
+                usageRecordDao.deleteOpenSession(currentActiveAppId);
+            } else {
+                usageRecordDao.endSession(currentActiveAppId, now);
+            }
         }
 
         // 开启新会话
         usageRecordDao.startSession(app.getId(), now);
         currentActiveAppId = app.getId();
-    }
-
-    private void closeCurrentSession() {
-        if (currentActiveAppId != null) {
-            try {
-                usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
-            } catch (Exception e) {
-                System.err.println("[ForegroundMonitorService] closeCurrentSession 失败: " + e.getMessage());
-            }
-            currentActiveAppId = null;
-        }
+        currentSessionStart = now;
     }
 
     /**
-     * 刷新监控列表缓存。
-     * 构建 O(1) 小写进程名 → MonitoredApp 的 HashMap。
-     * 同时清理 appFullPathCache 中已不存在的条目。
+     * 关闭当前会话。如果停留时间 < minSessionSeconds 则丢弃。
      */
+    private void closeCurrentSession() {
+        if (currentActiveAppId != null && currentSessionStart != null) {
+            LocalDateTime now = LocalDateTime.now();
+            long elapsed = Duration.between(currentSessionStart, now).getSeconds();
+            if (elapsed < minSessionSeconds) {
+                usageRecordDao.deleteOpenSession(currentActiveAppId);
+            } else {
+                try {
+                    usageRecordDao.endSession(currentActiveAppId, now);
+                } catch (Exception e) {
+                    System.err.println("[ForegroundMonitorService] closeCurrentSession 失败: " + e.getMessage());
+                }
+            }
+            currentActiveAppId = null;
+            currentSessionStart = null;
+        }
+    }
+
+    // ---- 内部方法 ----
+
+    private void startPolling() {
+        if (pollingTask != null) {
+            pollingTask.cancel(false);
+        }
+        if (scheduler == null || scheduler.isShutdown()) return;
+        pollingTask = scheduler.scheduleWithFixedDelay(
+                this::poll,
+                1,
+                pollIntervalSeconds,
+                TimeUnit.SECONDS
+        );
+    }
+
     private void refreshCache() {
         try {
             List<MonitoredApp> apps = monitoredAppDao.findAll();
@@ -326,7 +441,6 @@ public class ForegroundMonitorService {
             cachedAppMap = map;
             lastCacheRefresh = LocalDateTime.now();
 
-            // 清理路径缓存：去掉不再被监控的 app 的条目
             if (!appFullPathCache.isEmpty()) {
                 var currentIds = apps.stream().map(MonitoredApp::getId).collect(Collectors.toSet());
                 appFullPathCache.keySet().retainAll(currentIds);
@@ -336,10 +450,13 @@ public class ForegroundMonitorService {
         }
     }
 
-    /**
-     * 计算距下次凌晨 00:01 的秒数。
-     * 使用 ZonedDateTime 显式绑定时区，避免跨时区部署时偏移。
-     */
+    private void cancelRestEndTask() {
+        if (restEndTask != null) {
+            restEndTask.cancel(false);
+            restEndTask = null;
+        }
+    }
+
     private long computeDelayToMidnight() {
         ZoneId zone = ZoneId.systemDefault();
         ZonedDateTime now = ZonedDateTime.now(zone);

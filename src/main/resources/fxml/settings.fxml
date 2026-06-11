@@ -30,6 +30,63 @@
 
         <CheckBox fx:id="cbMinimizeToTray" text="关闭时最小化到系统托盘"
                   style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+
+        <HBox spacing="12.0" alignment="CENTER_LEFT">
+            <CheckBox fx:id="cbStartup" text="开机自启"
+                      style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <CheckBox fx:id="cbStartMinimized" text="开机静默启动（最小化到托盘）"
+                      style="-fx-font-size: 13px; -fx-text-fill: #7f8c8d;"/>
+        </HBox>
+
+        <Separator/>
+
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Label text="短时运行过滤（秒）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <Spinner fx:id="spMinSession" prefWidth="80"
+                     editable="true" style="-fx-font-size: 13px;"/>
+            <Label text="（应用停留小于此秒数不记录，默认 30）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
+    </VBox>
+
+    <!-- 使用时间 -->
+    <VBox spacing="10.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">
+        <Label text="使用时间" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+        <CheckBox fx:id="cbLimitEnabled" text="启用每日使用上限提醒"
+                  style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Label text="每日使用上限（分钟）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <Spinner fx:id="spDailyLimit" prefWidth="80"
+                     editable="true" style="-fx-font-size: 13px;"/>
+            <Label text="（0 表示不限，到达上限后自动休息）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
+
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Label text="休息时长（分钟）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
+            <Spinner fx:id="spRestDuration" prefWidth="80"
+                     editable="true" style="-fx-font-size: 13px;"/>
+            <Label text="（到达上限后休息多久再继续记录）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
+
+        <Label fx:id="lblRestStatus" style="-fx-font-size: 12px; -fx-text-fill: #e67e22;" visible="false"/>
+    </VBox>
+
+    <!-- 数据导出 -->
+    <VBox spacing="10.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">
+        <Label text="数据" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <Button fx:id="btnExport" text="导出数据（CSV）"
+                    style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 13px;"/>
+            <Button fx:id="btnImport" text="导入数据（CSV）"
+                    style="-fx-background-color: #2980b9; -fx-text-fill: white; -fx-font-size: 13px;"/>
+            <Label text="导出/导入 CSV 文件（导入追加到本地数据之上）"
+                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
+        </HBox>
     </VBox>
 
     <Label fx:id="lblSaveHint" style="-fx-font-size: 12px; -fx-text-fill: #27ae60;" visible="false"/>

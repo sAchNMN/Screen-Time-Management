@@ -82,6 +82,11 @@ public class App extends Application {
         ForegroundMonitorService.getInstance().start();
 
         primaryStage.show();
+
+        // 开机静默启动：如果设置了开机最小化启动，show 之后立即隐藏到托盘
+        if (traySupported && "true".equals(settingsDao.get("start_minimized", "false"))) {
+            primaryStage.hide();
+        }
     }
 
     private double getSavedSize(String key, double defaultVal) {

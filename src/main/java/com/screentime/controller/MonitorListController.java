@@ -5,6 +5,7 @@
  *    - 为每个进程异步加载图标
  *    - 支持多选添加进程到监控列表
  *    - 支持从监控列表中移除选中项
+ *    - 每个应用可设置"永久显示"（最多 3 个），保留 31 天前数据
  * ============================================================ */
 package com.screentime.controller;
 
@@ -18,6 +19,7 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.image.ImageView;
+import javafx.scene.layout.HBox;
 
 import java.util.List;
 
@@ -26,7 +28,7 @@ public class MonitorListController {
     @FXML
     private ListView<ProcessInfo> lvProcessList;
     @FXML
-    private ListView<String> lvMonitoredApps;
+    private ListView<MonitoredApp> lvMonitoredApps;
     @FXML
     private Button btnRefreshProcesses;
     @FXML
@@ -40,11 +42,10 @@ public class MonitorListController {
 
     private final MonitoredAppDao dao = new MonitoredAppDao();
     private final ObservableList<ProcessInfo> processItems = FXCollections.observableArrayList();
-    private final ObservableList<String> monitoredItems = FXCollections.observableArrayList();
+    private final ObservableList<MonitoredApp> monitoredItems = FXCollections.observableArrayList();
 
     @FXML
     public void initialize() {
-        // 初始化数据库表
         dao.initTable();
 
         // 绑定列表
@@ -55,30 +56,73 @@ public class MonitorListController {
         // 自定义进程列表单元格：图标 + 进程名
         lvProcessList.setCellFactory(list -> new ListCell<>() {
             private final ImageView imageView = new ImageView();
-
             {
                 imageView.setFitWidth(16);
                 imageView.setFitHeight(16);
                 imageView.setPreserveRatio(true);
             }
-
             @Override
             protected void updateItem(ProcessInfo item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
+                if (empty || item == null) { setText(null); setGraphic(null); return; }
+                setText(item.getName());
+                if (item.getIcon() != null) {
+                    imageView.setImage(item.getIcon());
                 } else {
-                    setText(item.getName());
-                    // 图标异步加载
-                    if (item.getIcon() != null) {
-                        imageView.setImage(item.getIcon());
-                    } else {
-                        imageView.setImage(null);
-                        loadIconAsync(item);
-                    }
-                    setGraphic(imageView);
+                    imageView.setImage(null);
+                    loadIconAsync(item);
                 }
+                setGraphic(imageView);
+            }
+        });
+
+        // 已监控列表自定义单元格：应用名 + "永久显示" 复选框
+        lvMonitoredApps.setCellFactory(list -> new ListCell<>() {
+            private final CheckBox cbPermanent = new CheckBox("永久显示");
+            private final Label nameLabel = new Label();
+            private final HBox box = new HBox(10, nameLabel, cbPermanent);
+            {
+                cbPermanent.setStyle("-fx-font-size: 11px; -fx-text-fill: #e67e22;");
+                nameLabel.setStyle("-fx-font-size: 13px;");
+                nameLabel.setMaxWidth(Double.MAX_VALUE);
+                HBox.setHgrow(nameLabel, javafx.scene.layout.Priority.ALWAYS);
+                cbPermanent.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+            }
+            @Override
+            protected void updateItem(MonitoredApp app, boolean empty) {
+                super.updateItem(app, empty);
+                if (empty || app == null) { setGraphic(null); return; }
+                nameLabel.setText(app.getAppName() + " (" + app.getProcessName() + ")");
+
+                // 避免重复绑定事件：先移除再添加
+                final var handlerRef = new Runnable[1];
+                handlerRef[0] = () -> {
+                    boolean selected = cbPermanent.isSelected();
+                    if (selected && dao.countPermanent() >= 3) {
+                        // 检查当前应用是否已经是永久（这样取消再勾选不算新增）
+                        if (!app.isPermanent()) {
+                            Platform.runLater(() -> {
+                                Alert alert = new Alert(Alert.AlertType.WARNING,
+                                        "永久显示最多只能设置 3 个应用", ButtonType.OK);
+                                alert.showAndWait();
+                            });
+                            cbPermanent.setSelected(false);
+                            return;
+                        }
+                    }
+                    dao.setPermanent(app.getId(), selected);
+                    app.setPermanent(selected);
+                    if (!selected) {
+                        app.setPermanentCancelledAt(java.time.LocalDateTime.now());
+                    }
+                };
+
+                cbPermanent.selectedProperty().addListener((obs, old, val) -> handlerRef[0].run());
+
+                // 设置当前状态（不触发事件）
+                boolean currentlyPermanent = app.isPermanent();
+                cbPermanent.selectedProperty().setValue(currentlyPermanent);
+                setGraphic(box);
             }
         });
 
@@ -97,11 +141,8 @@ public class MonitorListController {
             var icon = IconUtil.getIcon(item.getFullPath());
             Platform.runLater(() -> {
                 item.setIcon(icon);
-                // 触发列表刷新该项
                 int index = processItems.indexOf(item);
-                if (index >= 0) {
-                    lvProcessList.refresh();
-                }
+                if (index >= 0) lvProcessList.refresh();
             });
         }).start();
     }
@@ -111,16 +152,13 @@ public class MonitorListController {
         processItems.clear();
         IconUtil.clearCache();
 
-        // 在后台线程获取进程列表
         new Thread(() -> {
             List<ProcessInfo> processes = ProcessHandle.allProcesses()
                     .map(ph -> {
                         String fullPath = ph.info().command().orElse("");
                         String name = fullPath;
                         int lastSep = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/'));
-                        if (lastSep >= 0) {
-                            name = fullPath.substring(lastSep + 1);
-                        }
+                        if (lastSep >= 0) name = fullPath.substring(lastSep + 1);
                         return new ProcessInfo(name, fullPath);
                     })
                     .filter(p -> !p.getName().isBlank())
@@ -137,14 +175,11 @@ public class MonitorListController {
 
     private void refreshMonitoredList() {
         monitoredItems.clear();
-        List<MonitoredApp> apps = dao.findAll();
-        monitoredItems.addAll(apps.stream()
-                .map(MonitoredApp::toString)
-                .toList());
+        monitoredItems.addAll(dao.findAll());
     }
 
     private void addSelectedToMonitor() {
-        ObservableList<ProcessInfo> selected = lvProcessList.getSelectionModel().getSelectedItems();
+        var selected = lvProcessList.getSelectionModel().getSelectedItems();
         if (selected.isEmpty()) {
             showAlert("请先在进程列表中选中要监控的软件");
             return;
@@ -153,13 +188,9 @@ public class MonitorListController {
         int addedCount = 0;
         for (ProcessInfo info : selected) {
             String processName = info.getName();
-            if (dao.existsByProcessName(processName)) {
-                continue;
-            }
+            if (dao.existsByProcessName(processName)) continue;
             String appName = processName;
-            if (appName.toLowerCase().endsWith(".exe")) {
-                appName = appName.substring(0, appName.length() - 4);
-            }
+            if (appName.toLowerCase().endsWith(".exe")) appName = appName.substring(0, appName.length() - 4);
             dao.insert(new MonitoredApp(appName, processName));
             addedCount++;
         }
@@ -173,21 +204,14 @@ public class MonitorListController {
     }
 
     private void removeSelected() {
-        String selected = lvMonitoredApps.getSelectionModel().getSelectedItem();
+        MonitoredApp selected = lvMonitoredApps.getSelectionModel().getSelectedItem();
         if (selected == null) {
             showAlert("请先在监控列表中选中要移除的软件");
             return;
         }
-
-        List<MonitoredApp> apps = dao.findAll();
-        for (MonitoredApp app : apps) {
-            if (app.toString().equals(selected)) {
-                dao.delete(app.getId());
-                refreshMonitoredList();
-                setStatus("已移除: " + selected);
-                return;
-            }
-        }
+        dao.delete(selected.getId());
+        refreshMonitoredList();
+        setStatus("已移除: " + selected.getAppName());
     }
 
     private void setStatus(String msg) {

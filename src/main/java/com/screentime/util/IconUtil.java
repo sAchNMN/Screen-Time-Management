@@ -27,6 +27,13 @@ public class IconUtil {
 
     private static final Image DEFAULT_ICON = createDefaultIcon();
 
+    /**
+     * 返回默认占位图标。
+     */
+    public static Image getDefaultIcon() {
+        return DEFAULT_ICON;
+    }
+
     private IconUtil() {
     }
 
@@ -64,10 +71,15 @@ public class IconUtil {
     }
 
     /**
-     * 创建一个 16x16 的空白占位图标。
+     * 创建一个 16x16 的绿色圆点占位图标（替代空白图）。
      */
     private static Image createDefaultIcon() {
         BufferedImage bi = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D g2d = bi.createGraphics();
+        g2d.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setColor(new java.awt.Color(46, 204, 113));
+        g2d.fillOval(1, 1, 14, 14);
+        g2d.dispose();
         return SwingFXUtils.toFXImage(bi, null);
     }
 
