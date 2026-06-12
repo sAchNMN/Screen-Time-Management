@@ -26,3 +26,10 @@ image_875375713982686.png
 Thumbs.db
 .DS_Store
 *.log
+
+# Code Intelligence
+.codegraph/
+.reasonix/
+*.db
+*.db-shm
+*.db-wal
