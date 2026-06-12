@@ -1,61 +1,38 @@
 @echo off
 chcp 65001 >nul
-title å±å¹•æ—¶é—´ç®¡ç† - æ‰“åŒ…
+title ÆÁÄ»Ê±¼ä¹ÜÀí - ´ò°ü
 setlocal enabledelayedexpansion
 
-set "PROJECT_DIR=G:\æ¡Œé¢\CODE\Java\Screen-Time-Management"
+set "PROJECT_DIR=G:\×ÀÃæ\CODE\Java\Screen-Time-Management"
 set "APP_NAME=ScreenTimeManager"
 set "APP_VERSION=1.0.0"
 cd /d "%PROJECT_DIR%"
 
-echo [1/4] ç¼–è¯‘ä»£ç  ...
+echo [1/4] ±àÒë´úÂë ...
 call mvn clean package -DskipTests -q
-if errorlevel 1 ( echo ç¼–è¯‘å¤±è´¥ & pause & exit /b 1 )
+if errorlevel 1 ( echo ±àÒëÊ§°Ü & pause & exit /b 1 )
 
-echo [2/4] å‡†å¤‡æ–‡ä»¶ ...
+echo [2/4] ×¼±¸ÎÄ¼ş ...
 if exist "target\staging" rmdir /s /q "target\staging"
 mkdir target\staging
-
 copy target\screen-time-management-1.0-SNAPSHOT.jar target\staging\ >nul
 
-:: ä½¿ç”¨ PowerShell å¤åˆ¶ä¾èµ–ï¼ˆé¿å… for /r çš„ % ç¬¦å·è¢«è§£æï¼‰
-powershell -ExecutionPolicy Bypass -Command ^
-    "Get-ChildItem -Recurse \"$env:USERPROFILE\.m2\repository\org\openjfx\" -Filter *.jar | Where-Object { $_.Directory.Name -match '^\d+\.\d+' } | Copy-Item -Destination target\staging -Force" 2>nul
-powershell -ExecutionPolicy Bypass -Command ^
-    "Get-ChildItem -Recurse \"$env:USERPROFILE\.m2\repository\org\xerial\" -Filter *.jar | Where-Object { $_.Directory.Name -match '^\d+\.\d+' } | Copy-Item -Destination target\staging -Force" 2>nul
-powershell -ExecutionPolicy Bypass -Command ^
-    "Get-ChildItem -Recurse \"$env:USERPROFILE\.m2\repository\net\java\dev\jna\" -Filter *.jar | Where-Object { $_.Directory.Name -match '^\d+\.\d+' } | Copy-Item -Destination target\staging -Force" 2>nul
-
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Recurse \"C:\Users\34759\.m2\repository\org\openjfx\" -Filter *.jar | Where-Object Directory.Name -match '^\d+\.\d+' | Copy-Item -Destination target\staging -Force" 2>nul
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Recurse \"C:\Users\34759\.m2\repository\org\xerial\" -Filter *.jar | Where-Object Directory.Name -match '^\d+\.\d+' | Copy-Item -Destination target\staging -Force" 2>nul
+powershell -ExecutionPolicy Bypass -Command "Get-ChildItem -Recurse \"C:\Users\34759\.m2\repository\net\java\dev\jna\" -Filter *.jar | Where-Object Directory.Name -match '^\d+\.\d+' | Copy-Item -Destination target\staging -Force" 2>nul
 del target\staging\javafx-maven-*.jar 2>nul
 
-echo ç”Ÿæˆ ICO ...
 java -cp "target\staging\*" com.screentime.util.IconConverter src\main\resources\icon.png target\icon.ico 2>nul
 
-echo [3/4] æ‰“åŒ… ...
+echo [3/4] ´ò°ü ...
 if not exist "dist" mkdir dist
-jpackage --type app-image --name "%APP_NAME%" --app-version %APP_VERSION% ^
-    --vendor "ScreenTime" --description "å±å¹•æ—¶é—´ç®¡ç†" ^
-    --input target\staging --main-jar screen-time-management-1.0-SNAPSHOT.jar ^
-    --main-class com.screentime.App ^
-    --java-options "-Dprism.order=sw" --icon target/icon.ico --dest dist
+jpackage --type app-image --name "%APP_NAME%" --app-version %APP_VERSION% --vendor "ScreenTime" --description "ÆÁÄ»Ê±¼ä¹ÜÀí" --input target\staging --main-jar screen-time-management-1.0-SNAPSHOT.jar --main-class com.screentime.App --java-options "-Dprism.order=sw" --icon target/icon.ico --dest dist
+if errorlevel 1 ( echo ´ò°üÊ§°Ü & pause & exit /b 1 )
 
-if errorlevel 1 ( echo æ‰“åŒ…å¤±è´¥ & pause & exit /b 1 )
-
-echo [4/4] ä¿®æ­£å¯åŠ¨é…ç½® ...
-powershell -ExecutionPolicy Bypass -Command ^
-    "$cfg = 'dist\%APP_NAME%\app\ScreenTimeManager.cfg'; ^
-    $c = Get-Content $cfg; ^
-    $r = @(); ^
-    foreach ($l in $c) { ^
-        $r += $l; ^
-        if ($l -eq '[JavaOptions]') { ^
-            $r += 'java-options=--module-path=$APPDIR'; ^
-            $r += 'java-options=--add-modules=ALL-MODULE-PATH' ^
-        } ^
-    }; ^
-    Set-Content $cfg $r"
+echo [4/4] ĞŞÕıÅäÖÃ ...
+powershell -ExecutionPolicy Bypass -Command "=Get-Content 'dist\ScreenTimeManager\app\ScreenTimeManager.cfg';=@();foreach( in ){+=;if( -eq '[JavaOptions]'){+='java-options=--module-path=';+='java-options=--add-modules=ALL-MODULE-PATH'}};Set-Content 'dist\ScreenTimeManager\app\ScreenTimeManager.cfg' "
 
 echo.
-echo ======== æ‰“åŒ…å®Œæˆï¼========
-echo è·¯å¾„: %PROJECT_DIR%\dist\%APP_NAME%\ScreenTimeManager.exe
+echo ======== ´ò°üÍê³É£¡========
+echo Â·¾¶: %PROJECT_DIR%\dist\%APP_NAME%\ScreenTimeManager.exe
 pause
