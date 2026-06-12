@@ -68,21 +68,12 @@ public class ForegroundMonitorService {
     // 短时运行过滤阈值（秒），停留小于此值的记录自动丢弃
     private volatile int minSessionSeconds = 30;
 
-    // 每日使用上限（分钟），0 表示不限
-    private volatile int dailyLimitMinutes = 0;
-    // 是否启用每日上限提醒
-    private volatile boolean limitEnabled = false;
-    // 休息时长（分钟）
-    private volatile int restDurationMinutes = 5;
-    // 是否正在休息中
-    private volatile boolean isResting = false;
-    // 休息结束时间
-    private volatile LocalDateTime restUntil = null;
+    private static final long SECONDS_PER_DAY = 24 * 60 * 60;
+    private static final long CLEANUP_INTERVAL_SECONDS = 5 * 60;
 
     private volatile ScheduledFuture<?> pollingTask;
     private volatile ScheduledFuture<?> dailyFlushTask;
     private volatile ScheduledFuture<?> cleanupTask;
-    private volatile ScheduledFuture<?> restEndTask;
 
     private boolean running = false;
 
@@ -130,21 +121,6 @@ public class ForegroundMonitorService {
             minSessionSeconds = 30;
         }
 
-        // 从设置读取每日使用上限
-        try {
-            dailyLimitMinutes = Integer.parseInt(settingsDao.get("daily_limit_minutes", "0"));
-            dailyLimitMinutes = Math.max(0, dailyLimitMinutes);
-        } catch (NumberFormatException e) {
-            dailyLimitMinutes = 0;
-        }
-        try {
-            restDurationMinutes = Integer.parseInt(settingsDao.get("rest_duration_minutes", "5"));
-            restDurationMinutes = Math.max(1, restDurationMinutes);
-        } catch (NumberFormatException e) {
-            restDurationMinutes = 5;
-        }
-        limitEnabled = "true".equals(settingsDao.get("limit_enabled", "false"));
-
         monitoredAppDao.initTable();
         usageRecordDao.initTable();
         refreshCache();
@@ -155,7 +131,7 @@ public class ForegroundMonitorService {
         dailyFlushTask = scheduler.scheduleWithFixedDelay(
                 usageRecordDao::flushYesterday,
                 delayToMidnight,
-                24 * 60 * 60,
+                SECONDS_PER_DAY,
                 TimeUnit.SECONDS
         );
 
@@ -163,7 +139,7 @@ public class ForegroundMonitorService {
         cleanupTask = scheduler.scheduleWithFixedDelay(
                 monitoredAppDao::cleanupExpiredNonPermanent,
                 5,
-                5 * 60,
+                CLEANUP_INTERVAL_SECONDS,
                 TimeUnit.SECONDS
         );
 
@@ -188,10 +164,6 @@ public class ForegroundMonitorService {
         if (cleanupTask != null) {
             cleanupTask.cancel(false);
             cleanupTask = null;
-        }
-        if (restEndTask != null) {
-            restEndTask.cancel(false);
-            restEndTask = null;
         }
 
         // 关闭当前会话（短时过滤）
@@ -233,104 +205,13 @@ public class ForegroundMonitorService {
         return minSessionSeconds;
     }
 
-    // ---- 每日使用上限 / 休息机制 ----
-
-    public int getDailyLimitMinutes() { return dailyLimitMinutes; }
-
-    public void setDailyLimitMinutes(int minutes) {
-        minutes = Math.max(0, minutes);
-        if (this.dailyLimitMinutes == minutes) return;
-        this.dailyLimitMinutes = minutes;
-        settingsDao.set("daily_limit_minutes", String.valueOf(minutes));
-        if (minutes == 0) {
-            isResting = false;
-            restUntil = null;
-            cancelRestEndTask();
-        }
-    }
-
-    public int getRestDurationMinutes() { return restDurationMinutes; }
-
-    public void setRestDurationMinutes(int minutes) {
-        minutes = Math.max(1, minutes);
-        if (this.restDurationMinutes == minutes) return;
-        this.restDurationMinutes = minutes;
-        settingsDao.set("rest_duration_minutes", String.valueOf(minutes));
-    }
-
-    public boolean isResting() { return isResting; }
-    public LocalDateTime getRestUntil() { return restUntil; }
-    public void endRest() {
-        isResting = false;
-        restUntil = null;
-        cancelRestEndTask();
-    }
-
-    public boolean isLimitEnabled() { return limitEnabled; }
-
-    public void setLimitEnabled(boolean enabled) {
-        if (this.limitEnabled == enabled) return;
-        this.limitEnabled = enabled;
-        settingsDao.set("limit_enabled", String.valueOf(enabled));
-        if (!enabled) {
-            isResting = false;
-            restUntil = null;
-            cancelRestEndTask();
-        }
-    }
-
     // ---- 核心轮询逻辑 ----
 
     private void poll() {
         if (!running) return;
 
         try {
-            // 检查每日使用上限
-            if (limitEnabled && dailyLimitMinutes > 0) {
-                if (isResting) {
-                    if (restUntil != null && LocalDateTime.now().isAfter(restUntil)) {
-                        isResting = false;
-                        restUntil = null;
-                        cancelRestEndTask();
-                    } else {
-                        return; // 还在休息中，跳过
-                    }
-                } else {
-                    int totalSec = usageRecordDao.getTodayTotalSeconds();
-                    if (totalSec >= dailyLimitMinutes * 60) {
-                        // 达到上限，关闭会话并进入休息模式
-                        closeCurrentSession();
-                        isResting = true;
-                        restUntil = LocalDateTime.now().plusMinutes(restDurationMinutes);
-                        // 在休息结束时安排任务，立即恢复监控
-                        cancelRestEndTask();
-                        restEndTask = scheduler.schedule(
-                                () -> {
-                                    if (running && isResting) {
-                                        isResting = false;
-                                        restUntil = null;
-                                    }
-                                },
-                                restDurationMinutes,
-                                TimeUnit.MINUTES
-                        );
-                        // 弹窗提醒
-                        javafx.application.Platform.runLater(() -> {
-                            javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
-                                    javafx.scene.control.Alert.AlertType.WARNING,
-                                    "今日已使用 " + dailyLimitMinutes + " 分钟，已达设置上限。\n\n请休息一下，"
-                                    + restDurationMinutes + " 分钟后自动恢复记录。",
-                                    javafx.scene.control.ButtonType.OK);
-                            alert.setTitle("使用时间已达上限");
-                            alert.setHeaderText("休息提醒");
-                            alert.showAndWait();
-                        });
-                        return;
-                    }
-                }
-            }
-
-            if (Duration.between(lastCacheRefresh, LocalDateTime.now()).compareTo(CACHE_TTL) > 0) {
+            if (Duration.between(lastCacheRefresh, LocalDateTime.now()).toSeconds() > CACHE_TTL.toSeconds()) {
                 refreshCache();
             }
 
@@ -365,20 +246,9 @@ public class ForegroundMonitorService {
      * 如果上一会话停留时间 < minSessionSeconds，则直接删除该记录，不保留。
      */
     private void switchToApp(MonitoredApp app) {
+        closeCurrentSession();
+
         LocalDateTime now = LocalDateTime.now();
-
-        // 关闭上一个应用的会话（先判断是否太短）
-        if (currentActiveAppId != null && currentSessionStart != null) {
-            long elapsed = Duration.between(currentSessionStart, now).getSeconds();
-            if (elapsed < minSessionSeconds) {
-                // 停留太短，直接丢弃这条记录
-                usageRecordDao.deleteOpenSession(currentActiveAppId);
-            } else {
-                usageRecordDao.endSession(currentActiveAppId, now);
-            }
-        }
-
-        // 开启新会话
         usageRecordDao.startSession(app.getId(), now);
         currentActiveAppId = app.getId();
         currentSessionStart = now;
@@ -388,21 +258,19 @@ public class ForegroundMonitorService {
      * 关闭当前会话。如果停留时间 < minSessionSeconds 则丢弃。
      */
     private void closeCurrentSession() {
-        if (currentActiveAppId != null && currentSessionStart != null) {
-            LocalDateTime now = LocalDateTime.now();
-            long elapsed = Duration.between(currentSessionStart, now).getSeconds();
-            if (elapsed < minSessionSeconds) {
-                usageRecordDao.deleteOpenSession(currentActiveAppId);
-            } else {
-                try {
-                    usageRecordDao.endSession(currentActiveAppId, now);
-                } catch (Exception e) {
-                    System.err.println("[ForegroundMonitorService] closeCurrentSession 失败: " + e.getMessage());
-                }
+        if (currentActiveAppId == null || currentSessionStart == null) return;
+        long elapsed = Duration.between(currentSessionStart, LocalDateTime.now()).getSeconds();
+        if (elapsed < minSessionSeconds) {
+            usageRecordDao.deleteOpenSession(currentActiveAppId);
+        } else {
+            try {
+                usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
+            } catch (Exception e) {
+                System.err.println("[ForegroundMonitorService] closeCurrentSession 失败: " + e.getMessage());
             }
-            currentActiveAppId = null;
-            currentSessionStart = null;
         }
+        currentActiveAppId = null;
+        currentSessionStart = null;
     }
 
     // ---- 内部方法 ----
@@ -438,13 +306,6 @@ public class ForegroundMonitorService {
             }
         } catch (Exception e) {
             System.err.println("[ForegroundMonitorService] 刷新监控列表缓存失败: " + e.getMessage());
-        }
-    }
-
-    private void cancelRestEndTask() {
-        if (restEndTask != null) {
-            restEndTask.cancel(false);
-            restEndTask = null;
         }
     }
 

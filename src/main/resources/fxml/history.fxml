@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21.0.11"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.screentime.controller.HistoryController"
+      spacing="12.0"
+      style="-fx-background-color: #ecf0f1;">
+    <padding><Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/></padding>
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Label text="统计历史记录" style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" HBox.hgrow="ALWAYS"/>
+        <Button fx:id="btnRefresh" text="刷新数据" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 12px;"/>
+    </HBox>
+    <VBox spacing="6.0" VBox.vgrow="ALWAYS">
+        <Label fx:id="lblHistoryHint" text="暂无历史记录" style="-fx-font-size: 12px; -fx-text-fill: #7f8c8d;" visible="false"/>
+        <TableView fx:id="tblHistory" VBox.vgrow="ALWAYS" style="-fx-font-size: 13px;">
+            <columns>
+                <TableColumn fx:id="colHistoryApp" text="应用"/>
+                <TableColumn fx:id="colHistoryDate" text="日期"/>
+                <TableColumn fx:id="colHistoryDuration" text="使用时长"/>
+            </columns>
+        </TableView>
+    </VBox>
+</VBox>

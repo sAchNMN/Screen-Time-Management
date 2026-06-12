@@ -17,6 +17,7 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 public class SettingsController {
@@ -35,14 +36,7 @@ public class SettingsController {
     private Button btnExport;
     @FXML
     private Button btnImport;
-    @FXML
-    private Spinner<Integer> spDailyLimit;
-    @FXML
-    private Spinner<Integer> spRestDuration;
-    @FXML
-    private Label lblRestStatus;
-    @FXML
-    private CheckBox cbLimitEnabled;
+
 
     private final AppSettingsDao settingsDao = new AppSettingsDao();
     private final UsageRecordDao usageRecordDao = new UsageRecordDao();
@@ -102,55 +96,13 @@ public class SettingsController {
         // ---- 数据导入 ----
         btnImport.setOnAction(e -> importData());
 
-        // ---- 每日使用上限 ----
-        var monitorSvc = ForegroundMonitorService.getInstance();
-
-        cbLimitEnabled.setSelected(monitorSvc.isLimitEnabled());
-        cbLimitEnabled.setOnAction(e -> {
-            monitorSvc.setLimitEnabled(cbLimitEnabled.isSelected());
-        });
-
-        int dailyLimit = getIntSetting("daily_limit_minutes", 0);
-        SpinnerValueFactory<Integer> limitFactory =
-                new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 1440, dailyLimit);
-        spDailyLimit.setValueFactory(limitFactory);
-        spDailyLimit.setEditable(true);
-        spDailyLimit.valueProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal == null) return;
-            monitorSvc.setDailyLimitMinutes(newVal);
-        });
-
-        int restDur = getIntSetting("rest_duration_minutes", 5);
-        SpinnerValueFactory<Integer> restFactory =
-                new SpinnerValueFactory.IntegerSpinnerValueFactory(1, 120, restDur);
-        spRestDuration.setValueFactory(restFactory);
-        spRestDuration.setEditable(true);
-        spRestDuration.valueProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal == null) return;
-            monitorSvc.setRestDurationMinutes(newVal);
-        });
-
-        // 每 5 秒刷新休息状态
-        javafx.animation.Timeline restTimer = new javafx.animation.Timeline(
-                new javafx.animation.KeyFrame(javafx.util.Duration.seconds(5), e -> refreshRestStatus()));
-        restTimer.setCycleCount(javafx.animation.Timeline.INDEFINITE);
-        restTimer.play();
     }
 
-    private void refreshRestStatus() {
-        var svc = ForegroundMonitorService.getInstance();
-        if (svc.isResting()) {
-            var until = svc.getRestUntil();
-            if (until != null) {
-                long mins = java.time.Duration.between(java.time.LocalDateTime.now(), until).toMinutes();
-                long secs = java.time.Duration.between(java.time.LocalDateTime.now(), until).toSeconds() % 60;
-                lblRestStatus.setText("休息中，剩余 " + mins + " 分 " + secs + " 秒 - 到达上限后自动休息");
-                lblRestStatus.setStyle("-fx-font-size: 12px; -fx-text-fill: #e74c3c;");
-            }
-            lblRestStatus.setVisible(true);
-        } else {
-            lblRestStatus.setVisible(false);
-        }
+
+    private void showHint(String message, boolean isError) {
+        lblSaveHint.setText(message);
+        lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: " + (isError ? "#e74c3c" : "#27ae60") + ";");
+        lblSaveHint.setVisible(true);
     }
 
     private int getIntSetting(String key, int defaultValue) {
@@ -199,13 +151,10 @@ public class SettingsController {
                 }
                 pw.println(sb);
             }
-            lblSaveHint.setText("导出成功：" + file.getName());
-            lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #27ae60;");
+            showHint("导出成功：" + file.getName(), false);
         } catch (Exception ex) {
-            lblSaveHint.setText("导出失败：" + ex.getMessage());
-            lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #e74c3c;");
+            showHint("导出失败：" + ex.getMessage(), true);
         }
-        lblSaveHint.setVisible(true);
     }
 
     private void importData() {
@@ -220,37 +169,31 @@ public class SettingsController {
         try {
             List<String[]> rows = parseCsv(file);
             if (rows.size() <= 1) {
-                lblSaveHint.setText("导入失败：CSV 文件为空或只有标题行");
-                lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #e74c3c;");
-                lblSaveHint.setVisible(true);
+                showHint("导入失败：CSV 文件为空或只有标题行", true);
                 return;
             }
 
             int count = usageRecordDao.importRows(rows);
             if (count >= 0) {
-                lblSaveHint.setText("导入成功，已追加 " + count + " 条记录");
-                lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #27ae60;");
+                showHint("导入成功，已追加 " + count + " 条记录", false);
             } else {
-                lblSaveHint.setText("导入失败，请检查 CSV 格式");
-                lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #e74c3c;");
+                showHint("导入失败，请检查 CSV 格式", true);
             }
         } catch (Exception ex) {
-            lblSaveHint.setText("导入失败：" + ex.getMessage());
-            lblSaveHint.setStyle("-fx-font-size: 12px; -fx-text-fill: #e74c3c;");
+            showHint("导入失败：" + ex.getMessage(), true);
         }
-        lblSaveHint.setVisible(true);
     }
 
     /**
      * 解析 CSV 文件，处理带引号的字段。
      */
     private List<String[]> parseCsv(File file) throws Exception {
-        List<String[]> rows = new java.util.ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
         List<String> lines = java.nio.file.Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
         for (String line : lines) {
             if (line.isBlank()) continue;
             // 简单的 CSV 行解析（处理引号包裹的字段）
-            List<String> fields = new java.util.ArrayList<>();
+            List<String> fields = new ArrayList<>();
             StringBuilder current = new StringBuilder();
             boolean inQuotes = false;
             for (int i = 0; i < line.length(); i++) {

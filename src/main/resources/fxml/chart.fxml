@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.chart.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21.0.11"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.screentime.controller.ChartController"
+      spacing="12.0"
+      style="-fx-background-color: #ecf0f1;"
+      VBox.vgrow="ALWAYS">
+    <padding><Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/></padding>
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Label text="统计图表" style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;" HBox.hgrow="ALWAYS"/>
+        <Button fx:id="btnRefresh" text="刷新数据" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 12px;"/>
+    </HBox>
+    <HBox spacing="16.0" VBox.vgrow="ALWAYS">
+        <VBox spacing="6.0" HBox.hgrow="ALWAYS">
+            <Label text="近 7 天使用时长" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+            <BarChart fx:id="barChart" VBox.vgrow="ALWAYS" animated="false" legendVisible="true">
+                <xAxis><CategoryAxis label="日期" side="BOTTOM"/></xAxis>
+                <yAxis><NumberAxis label="分钟" side="LEFT"/></yAxis>
+            </BarChart>
+        </VBox>
+        <VBox spacing="6.0" HBox.hgrow="ALWAYS" maxWidth="300">
+            <Label text="今日使用占比" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+            <PieChart fx:id="pieChart" VBox.vgrow="ALWAYS" animated="false" legendVisible="true" labelsVisible="true"/>
+        </VBox>
+    </HBox>
+    <VBox spacing="6.0">
+        <Label text="使用排行" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
+        <TableView fx:id="tblRanking" prefHeight="180" style="-fx-font-size: 13px;">
+            <columns>
+                <TableColumn fx:id="colRankApp" text="应用"/>
+                <TableColumn fx:id="colRankToday" text="今日使用"/>
+                <TableColumn fx:id="colRankWeek" text="本周总计"/>
+                <TableColumn fx:id="colRankMonth" text="本月总计"/>
+            </columns>
+        </TableView>
+    </VBox>
+</VBox>

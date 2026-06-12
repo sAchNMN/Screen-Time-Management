@@ -14,16 +14,24 @@ import javafx.scene.image.Image;
 import javax.swing.filechooser.FileSystemView;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 从 Windows 可执行文件中提取图标的工具类。
+ *
+ * 缓存使用 LRU 策略且上限 200 项，防止内存无限增长（进程列表扫描可能引入大量路径）。
  */
 public class IconUtil {
 
     private static final FileSystemView fileSystemView = FileSystemView.getFileSystemView();
-    private static final Map<String, Image> iconCache = new ConcurrentHashMap<>();
+    private static final int CACHE_MAX_SIZE = 200;
+    private static final Map<String, Image> iconCache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Image> eldest) {
+            return size() > CACHE_MAX_SIZE;
+        }
+    };
 
     private static final Image DEFAULT_ICON = createDefaultIcon();
 
@@ -44,7 +52,16 @@ public class IconUtil {
         if (filePath == null || filePath.isBlank()) {
             return DEFAULT_ICON;
         }
-        return iconCache.computeIfAbsent(filePath, IconUtil::extractIcon);
+        // 手动实现 computeIfAbsent + LRU 淘汰（配置了 access-order 的 LinkedHashMap）
+        synchronized (iconCache) {
+            Image cached = iconCache.get(filePath);
+            if (cached != null) return cached;
+        }
+        Image extracted = extractIcon(filePath);
+        synchronized (iconCache) {
+            iconCache.put(filePath, extracted);
+        }
+        return extracted;
     }
 
     private static Image extractIcon(String filePath) {
@@ -87,6 +104,8 @@ public class IconUtil {
      * 清空图标缓存。
      */
     public static void clearCache() {
-        iconCache.clear();
+        synchronized (iconCache) {
+            iconCache.clear();
+        }
     }
 }
