@@ -49,31 +49,6 @@
         </HBox>
     </VBox>
 
-    <!-- 使用时间 -->
-    <VBox spacing="10.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">
-        <Label text="使用时间" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;"/>
-
-        <CheckBox fx:id="cbLimitEnabled" text="启用每日使用上限提醒"
-                  style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
-
-        <HBox spacing="10.0" alignment="CENTER_LEFT">
-            <Label text="每日使用上限（分钟）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
-            <Spinner fx:id="spDailyLimit" prefWidth="80"
-                     editable="true" style="-fx-font-size: 13px;"/>
-            <Label text="（0 表示不限，到达上限后自动休息）"
-                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
-        </HBox>
-
-        <HBox spacing="10.0" alignment="CENTER_LEFT">
-            <Label text="休息时长（分钟）：" style="-fx-font-size: 13px; -fx-text-fill: #2c3e50;"/>
-            <Spinner fx:id="spRestDuration" prefWidth="80"
-                     editable="true" style="-fx-font-size: 13px;"/>
-            <Label text="（到达上限后休息多久再继续记录）"
-                   style="-fx-font-size: 11px; -fx-text-fill: #95a5a6;"/>
-        </HBox>
-
-        <Label fx:id="lblRestStatus" style="-fx-font-size: 12px; -fx-text-fill: #e67e22;" visible="false"/>
-    </VBox>
 
     <!-- 数据导出 -->
     <VBox spacing="10.0" style="-fx-background-color: white; -fx-padding: 16; -fx-background-radius: 6;">

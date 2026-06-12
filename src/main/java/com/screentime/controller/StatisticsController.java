@@ -11,6 +11,7 @@ import com.screentime.dao.UsageRecordDao;
 import com.screentime.model.MonitoredApp;
 import com.screentime.service.ForegroundMonitorService;
 import com.screentime.util.IconUtil;
+import com.screentime.util.TimeUtil;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -103,12 +104,19 @@ public class StatisticsController {
         }
         lblTodayHint.setVisible(false);
 
+        // 一次性加载所有监控应用，构建 appId → MonitoredApp 映射，避免在循环内反复调用 findAll()
+        Map<Integer, MonitoredApp> appMap = new java.util.HashMap<>();
+        for (MonitoredApp app : monitoredAppDao.findAll()) {
+            appMap.put(app.getId(), app);
+        }
+
         for (Map.Entry<Integer, Integer> entry : usage.entrySet()) {
             int seconds = entry.getValue();
             if (seconds > 0) {
                 int appId = entry.getKey();
-                String appName = getAppName(appId);
-                Image icon = getAppIcon(appId);
+                MonitoredApp app = appMap.get(appId);
+                String appName = (app != null) ? app.getAppName() : ("应用 #" + appId);
+                Image icon = getAppIcon(appId, app);
                 todayRows.add(new TodayRow(icon, appName, formatDuration(seconds)));
             }
         }
@@ -119,16 +127,11 @@ public class StatisticsController {
         }
     }
 
-    private String getAppName(int appId) {
-        for (MonitoredApp app : monitoredAppDao.findAll()) {
-            if (app.getId() == appId) {
-                return app.getAppName();
-            }
-        }
-        return "应用 #" + appId;
-    }
-
-    private Image getAppIcon(int appId) {
+    /**
+     * 获取应用图标，优先从缓存中取，再尝试从进程路径提取。
+     * app 参数由调用方传入（来自预加载的映射），避免重复查询数据库。
+     */
+    private Image getAppIcon(int appId, MonitoredApp app) {
         Image cached = appIconCache.get(appId);
         if (cached != null) return cached;
 
@@ -138,20 +141,18 @@ public class StatisticsController {
             return icon;
         }
 
-        for (MonitoredApp app : monitoredAppDao.findAll()) {
-            if (app.getId() == appId) {
-                String foundPath = findProcessPath(app.getProcessName());
-                if (foundPath != null) {
-                    monitorService.cacheAppPath(appId, foundPath);
-                    icon = monitorService.getAppIcon(appId);
-                    if (icon != null) {
-                        appIconCache.put(appId, icon);
-                        return icon;
-                    }
+        if (app != null) {
+            String foundPath = findProcessPath(app.getProcessName());
+            if (foundPath != null) {
+                monitorService.cacheAppPath(appId, foundPath);
+                icon = monitorService.getAppIcon(appId);
+                if (icon != null) {
+                    appIconCache.put(appId, icon);
+                    return icon;
                 }
-                break;
             }
         }
+
         appIconCache.put(appId, IconUtil.getDefaultIcon());
         return IconUtil.getDefaultIcon();
     }
@@ -169,15 +170,7 @@ public class StatisticsController {
     }
 
     static String formatDuration(int totalSeconds) {
-        if (totalSeconds < 60) {
-            return totalSeconds + " 秒";
-        }
-        int hours = totalSeconds / 3600;
-        int minutes = (totalSeconds % 3600) / 60;
-        if (hours > 0) {
-            return hours + " 小时 " + minutes + " 分钟";
-        }
-        return minutes + " 分钟";
+        return TimeUtil.formatDuration(totalSeconds);
     }
 
     public static class TodayRow {
