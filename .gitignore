@@ -30,6 +30,13 @@ Thumbs.db
 # Code Intelligence
 .codegraph/
 .reasonix/
+.codex/
+CLAUDE.md
+AGENTS.md
+reasonix.toml
+build.bat
+build.ps1
+build-exe.bat
 *.db
 *.db-shm
 *.db-wal
