@@ -10,8 +10,7 @@
     <name>Screen Time Management</name>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <argLine>-Dfile.encoding=UTF-8</argLine>
@@ -72,10 +71,31 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>21</source>
-                    <target>21</target>
+                    <release>21</release>
                     <encoding>UTF-8</encoding>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.6.2</version>
+                <executions>
+                    <execution>
+                        <id>enforce-java-version</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,22)</version>
+                                    <message>This project is tested with JDK 21. Use JDK 21 instead of newer preview/current JDKs.</message>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Build a fat JAR for jpackage. -->
@@ -111,6 +131,10 @@
                 <configuration>
                     <mainClass>com.screentime.Main</mainClass>
                     <options>
+                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <option>-Dfile.encoding=UTF-8</option>
+                        <option>-Dsun.stdout.encoding=UTF-8</option>
+                        <option>-Dsun.stderr.encoding=UTF-8</option>
                         <option>-Dprism.order=sw</option>
                     </options>
                 </configuration>

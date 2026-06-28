@@ -23,7 +23,7 @@
 ## 环境要求
 
 - Windows 系统
-- JDK 21 或更高版本
+- JDK 21
 - Maven 3.8 或更高版本
 - 推荐使用 IntelliJ IDEA 打开项目
 
@@ -35,6 +35,20 @@
 
 ```bash
 mvn clean javafx:run
+```
+
+推荐使用上面的 Maven 命令启动项目。不要在 IntelliJ IDEA 的 VM options 里手写本机 Maven 仓库路径，例如 `C:\Users\...\ .m2\...` 这类 `--module-path`；这些路径只在某一台电脑上有效，换电脑后会失效。
+
+如果使用 IntelliJ IDEA，推荐从 Maven 工具窗口运行：
+
+```text
+Plugins -> javafx -> javafx:run
+```
+
+或者在运行配置中选择 Maven，命令填写：
+
+```text
+clean javafx:run
 ```
 
 如果只想先确认项目能否编译和测试：
