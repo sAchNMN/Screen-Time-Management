@@ -1,28 +1,136 @@
-# Screen-Time-Management - 屏幕使用时间管理
+# Screen-Time-Management
+
+一个基于 JavaFX 的 Windows 屏幕使用时间管理工具，用于记录前台应用的使用时长，并提供应用监控、历史记录、统计图表和基础设置功能。
+
+## 功能概览
+
+- 监控当前前台窗口对应的应用进程
+- 记录应用使用时长，并写入本地 SQLite 数据库
+- 管理需要关注的应用列表
+- 查看历史使用记录和统计数据
+- 支持关闭到托盘、窗口尺寸保存等基础设置
+- 提供开机自启相关工具逻辑
+
+## 技术栈
+
+- Java 21
+- JavaFX 21
+- Maven
+- SQLite
+- JNA（调用 Windows 原生 API 获取前台窗口信息）
+- JUnit 5
 
 ## 环境要求
-- **JDK:** 21 或以上
-- **Maven:** 3.8+
-- **IDE:** IntelliJ IDEA（推荐，已附带 .idea 配置）
 
-## 快速启动
-1. 用 IntelliJ IDEA 打开项目根目录
-2. 等待 Maven 自动下载依赖（或在终端执行 `mvn clean package`）
-3. 运行入口类：`com.screentime.App`
+- Windows 系统
+- JDK 21 或更高版本
+- Maven 3.8 或更高版本
+- 推荐使用 IntelliJ IDEA 打开项目
+
+> 注意：项目依赖 Windows 前台窗口 API，核心监控功能不适合直接在 macOS 或 Linux 上运行。
+
+## 快速运行
+
+在项目根目录执行：
+
+```bash
+mvn clean javafx:run
+```
+
+如果只想先确认项目能否编译和测试：
+
+```bash
+mvn test
+```
+
+打包生成 JAR：
+
+```bash
+mvn package
+```
+
+打包后会生成：
+
+```text
+target/screen-time-management-1.0-SNAPSHOT.jar
+target/screen-time-management-1.0-SNAPSHOT-jar-with-dependencies.jar
+```
 
 ## 项目结构
-```
+
+```text
 src/
 ├── main/
-│   ├── java/com/screentime/   ← 业务逻辑代码
-│   └── resources/             ← 界面 FXML、图标、数据库 Schema
-└── test/java/com/screentime/  ← 测试代码
+│   ├── java/com/screentime/
+│   │   ├── controller/   # JavaFX 控制器
+│   │   ├── dao/          # SQLite 数据访问
+│   │   ├── model/        # 数据模型
+│   │   ├── service/      # 前台应用监控服务
+│   │   └── util/         # 数据库、时间、图标、Windows API 等工具
+│   └── resources/
+│       ├── database/     # SQLite 表结构脚本
+│       ├── fxml/         # JavaFX 页面
+│       └── icon.png      # 应用图标
+└── test/
+    └── java/com/screentime/ # 单元测试
 ```
 
-## 数据库
-- 使用 SQLite，运行时自动在 `%userprofile%/ScreenTime/screentime.db` 创建
-- DDL 脚本位于 `src/main/resources/database/schema.sql`
+## 数据存储
 
-## 注意
-- 首次运行会自动创建数据库和目录，无需手动配置
-- JavaFX 通过 Maven 依赖引入，不依赖 JDK 内置 JavaFX
+项目使用 SQLite。本地数据库会在运行时自动创建：
+
+```text
+%USERPROFILE%/ScreenTime/screentime.db
+```
+
+数据库表结构定义在：
+
+```text
+src/main/resources/database/schema.sql
+```
+
+## 常用命令
+
+```bash
+# 运行测试
+mvn test
+
+# 编译并打包
+mvn package
+
+# 启动 JavaFX 应用
+mvn javafx:run
+```
+
+## 常见问题
+
+### 1. Maven 下载依赖失败
+
+检查网络、Maven 配置和本地仓库权限。首次运行需要下载 JavaFX、SQLite JDBC、JNA、JUnit 等依赖。
+
+### 2. Java 版本不匹配
+
+项目使用 Java 21。请确认：
+
+```bash
+java -version
+mvn -version
+```
+
+### 3. 监控功能没有正常工作
+
+该项目依赖 Windows 原生 API 获取前台窗口信息。请确认应用运行在 Windows 环境，并且没有被安全软件拦截。
+
+## 开发说明
+
+- 入口类：`com.screentime.Main`
+- JavaFX 主应用类：`com.screentime.App`
+- 前台应用监控逻辑：`com.screentime.service.ForegroundMonitorService`
+- 数据库初始化逻辑：`com.screentime.util.DatabaseUtil`
+- Windows 原生 API 封装：`com.screentime.util.WindowsNativeUtil`
+
+提交代码前建议至少运行：
+
+```bash
+mvn test
+```
