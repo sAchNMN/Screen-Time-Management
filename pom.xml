@@ -13,6 +13,8 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <argLine>-Dfile.encoding=UTF-8</argLine>
         <javafx.version>21.0.11</javafx.version>
         <sqlite.version>3.49.1.0</sqlite.version>
         <junit.version>5.10.3</junit.version>
@@ -33,7 +35,7 @@
             <version>${javafx.version}</version>
         </dependency>
 
-        <!-- JavaFX Swing (用于图标转换) -->
+        <!-- JavaFX Swing for icon conversion -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-swing</artifactId>
@@ -76,7 +78,7 @@
                 </configuration>
             </plugin>
 
-            <!-- 打包 fat JAR（含所有依赖）供 jpackage 使用 -->
+            <!-- Build a fat JAR for jpackage. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -127,6 +129,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
+                <configuration>
+                    <argLine>${argLine}</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>
