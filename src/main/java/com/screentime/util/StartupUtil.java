@@ -5,6 +5,8 @@
 package com.screentime.util;
 
 import java.io.*;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 
 public class StartupUtil {
@@ -13,13 +15,15 @@ public class StartupUtil {
     private static final Path DATA_DIR = Paths.get(System.getProperty("user.home"), "ScreenTime");
     private static final Path LAUNCHER_PATH = DATA_DIR.resolve("launcher.bat");
     private static final String REG_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    private static final Charset WINDOWS_NATIVE_CHARSET =
+            Charset.forName(System.getProperty("native.encoding", StandardCharsets.UTF_8.name()));
 
     private StartupUtil() {}
 
     public static boolean isStartupEnabled() {
         try {
             Process p = Runtime.getRuntime().exec("reg query " + REG_KEY + " /v " + APP_NAME);
-            String out = new String(p.getInputStream().readAllBytes());
+            String out = new String(p.getInputStream().readAllBytes(), WINDOWS_NATIVE_CHARSET);
             p.waitFor();
             return out.contains(APP_NAME);
         } catch (Exception e) { return false; }
@@ -48,7 +52,8 @@ public class StartupUtil {
         }
         String content = "@echo off\r\nstart /B javaw --module-path \"" + mp.toString() + "\""
                 + " --add-modules=javafx.base,javafx.graphics,javafx.controls,javafx.fxml,javafx.swing"
+                + " -Dfile.encoding=UTF-8"
                 + " -cp \"" + cp + "\" com.screentime.Main\r\n";
-        Files.writeString(LAUNCHER_PATH, content);
+        Files.writeString(LAUNCHER_PATH, content, WINDOWS_NATIVE_CHARSET);
     }
 }
