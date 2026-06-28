@@ -25,42 +25,9 @@ import java.util.List;
 public class MonitoredAppDao {
 
     public void initTable() {
-        String[] sqls = {
-            """
-            CREATE TABLE IF NOT EXISTS monitored_apps (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                app_name    TEXT NOT NULL,
-                process_name TEXT NOT NULL,
-                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active   INTEGER DEFAULT 1
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS usage_records (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                app_id      INTEGER NOT NULL,
-                start_time  TIMESTAMP NOT NULL,
-                end_time    TIMESTAMP,
-                duration_seconds INTEGER,
-                FOREIGN KEY (app_id) REFERENCES monitored_apps(id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS daily_summary (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                app_id      INTEGER NOT NULL,
-                date        DATE NOT NULL,
-                total_seconds INTEGER DEFAULT 0,
-                FOREIGN KEY (app_id) REFERENCES monitored_apps(id),
-                UNIQUE(app_id, date)
-            );
-            """
-        };
+        DatabaseUtil.initializeSchema();
         try (Connection conn = DatabaseUtil.getConnection();
              Statement stmt = conn.createStatement()) {
-            for (String sql : sqls) {
-                stmt.executeUpdate(sql);
-            }
             // 兼容旧数据库
             try { stmt.executeUpdate("ALTER TABLE monitored_apps ADD COLUMN is_active INTEGER DEFAULT 1"); } catch (SQLException ignored) {}
             try { stmt.executeUpdate("ALTER TABLE monitored_apps ADD COLUMN is_permanent INTEGER DEFAULT 0"); } catch (SQLException ignored) {}
@@ -188,7 +155,7 @@ public class MonitoredAppDao {
              ResultSet rs = stmt.executeQuery(sql)) {
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) {
-            return 0;
+            throw new RuntimeException("Failed to count permanent apps", e);
         }
     }
 
@@ -222,11 +189,12 @@ public class MonitoredAppDao {
                 conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
+                throw e;
             } finally {
                 conn.setAutoCommit(true);
             }
         } catch (SQLException e) {
-            System.err.println("[MonitoredAppDao] cleanupExpiredNonPermanent 失败: " + e.getMessage());
+            throw new RuntimeException("Failed to cleanup expired non-permanent usage data", e);
         }
     }
 }

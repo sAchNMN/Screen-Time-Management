@@ -1,10 +1,6 @@
 /* ============================================================
- *  MainController.java — 主界面框架控制器
- *  提供左侧导航栏 + 右侧内容区的单页应用（SPA）式路由：
- *    - 点击导航按钮切换内容面板
- *    - 动态加载对应的 FXML 到 contentArea
- *    - 高亮当前选中的导航按钮
- *  导航项：监控软件管理 / 使用统计 / 设置
+ *  MainController.java - main window router
+ *  Loads page FXML into contentArea and updates navigation state.
  * ============================================================ */
 package com.screentime.controller;
 
@@ -12,6 +8,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -47,6 +44,7 @@ public class MainController {
     private static final String NAV_CHART = "chart";
     private static final String NAV_HISTORY = "history";
     private static final String NAV_SETTINGS = "settings";
+    private AutoCloseable currentController;
 
     @FXML
     public void initialize() {
@@ -74,15 +72,6 @@ public class MainController {
     }
 
     private void navigateTo(String navKey) {
-        for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
-            Button btn = entry.getValue();
-            if (entry.getKey().equals(navKey)) {
-                btn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 14px;");
-            } else {
-                btn.setStyle("-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;");
-            }
-        }
-
         String fxmlFile = switch (navKey) {
             case NAV_MONITOR -> "/fxml/monitor-list.fxml";
             case NAV_STATISTICS -> "/fxml/statistics.fxml";
@@ -93,10 +82,41 @@ public class MainController {
         };
 
         try {
-            Node page = FXMLLoader.load(getClass().getResource(fxmlFile));
+            FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlFile));
+            Node page = loader.load();
+            closeCurrentController();
             contentArea.getChildren().setAll(page);
+            Object controller = loader.getController();
+            currentController = controller instanceof AutoCloseable closeable ? closeable : null;
+            updateNavSelection(navKey);
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("[MainController] page load failed " + fxmlFile + ": " + e.getMessage());
+            Label error = new Label("Page load failed: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            error.setWrapText(true);
+            error.setStyle("-fx-padding: 20; -fx-text-fill: #c0392b; -fx-font-size: 13px;");
+            contentArea.getChildren().setAll(error);
+        }
+    }
+
+    private void updateNavSelection(String navKey) {
+        for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
+            Button btn = entry.getValue();
+            if (entry.getKey().equals(navKey)) {
+                btn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 14px;");
+            } else {
+                btn.setStyle("-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14px;");
+            }
+        }
+    }
+
+    private void closeCurrentController() {
+        if (currentController == null) return;
+        try {
+            currentController.close();
+        } catch (Exception e) {
+            System.err.println("[MainController] failed to close page controller: " + e.getMessage());
+        } finally {
+            currentController = null;
         }
     }
 }

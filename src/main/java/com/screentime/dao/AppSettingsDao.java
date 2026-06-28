@@ -18,18 +18,7 @@ import java.sql.SQLException;
 public class AppSettingsDao {
 
     public void initTable() {
-        String sql = """
-                CREATE TABLE IF NOT EXISTS app_settings (
-                    key   TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                """;
-        try (Connection conn = DatabaseUtil.getConnection();
-             var stmt = conn.createStatement()) {
-            stmt.executeUpdate(sql);
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to init app_settings table", e);
-        }
+        DatabaseUtil.initializeSchema();
     }
 
     public String get(String key, String defaultValue) {

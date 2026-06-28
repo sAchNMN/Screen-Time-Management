@@ -39,7 +39,6 @@ public class StartupUtil {
     }
 
     private static void ensureLauncher() throws IOException {
-        if (Files.exists(LAUNCHER_PATH)) return;
         Files.createDirectories(DATA_DIR);
         String cp = System.getProperty("java.class.path", "");
         StringBuilder mp = new StringBuilder();
@@ -49,7 +48,7 @@ public class StartupUtil {
         }
         String content = "@echo off\r\nstart /B javaw --module-path \"" + mp.toString() + "\""
                 + " --add-modules=javafx.base,javafx.graphics,javafx.controls,javafx.fxml,javafx.swing"
-                + " -cp \"" + cp + "\" com.screentime.App\r\n";
+                + " -cp \"" + cp + "\" com.screentime.Main\r\n";
         Files.writeString(LAUNCHER_PATH, content);
     }
 }

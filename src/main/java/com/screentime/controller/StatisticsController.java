@@ -66,10 +66,10 @@ public class StatisticsController {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+                TodayRow row = getTableRow() != null ? getTableRow().getItem() : null;
+                if (empty || item == null || row == null) {
                     setGraphic(null);
                 } else {
-                    TodayRow row = getTableView().getItems().get(getIndex());
                     Image icon = row.getIcon();
                     iconView.setImage(icon != null ? icon : IconUtil.getDefaultIcon());
                     nameLabel.setText(item);

@@ -12,6 +12,7 @@ package com.screentime.controller;
 import com.screentime.dao.MonitoredAppDao;
 import com.screentime.model.MonitoredApp;
 import com.screentime.model.ProcessInfo;
+import com.screentime.util.DatabaseUtil;
 import com.screentime.util.IconUtil;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -22,8 +23,19 @@ import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class MonitorListController {
+public class MonitorListController implements AutoCloseable {
+
+    private static final ExecutorService BACKGROUND_EXECUTOR = Executors.newFixedThreadPool(3, r -> {
+        Thread t = new Thread(r, "monitor-list-worker");
+        t.setDaemon(true);
+        return t;
+    });
 
     @FXML
     private ListView<ProcessInfo> lvProcessList;
@@ -43,6 +55,10 @@ public class MonitorListController {
     private final MonitoredAppDao dao = new MonitoredAppDao();
     private final ObservableList<ProcessInfo> processItems = FXCollections.observableArrayList();
     private final ObservableList<MonitoredApp> monitoredItems = FXCollections.observableArrayList();
+    private final Set<String> loadingIconPaths = ConcurrentHashMap.newKeySet();
+    private final Set<String> failedIconPaths = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger refreshGeneration = new AtomicInteger();
+    private volatile boolean closed = false;
 
     @FXML
     public void initialize() {
@@ -91,12 +107,17 @@ public class MonitorListController {
             @Override
             protected void updateItem(MonitoredApp app, boolean empty) {
                 super.updateItem(app, empty);
-                if (empty || app == null) { setGraphic(null); return; }
+                cbPermanent.setOnAction(null);
+                if (empty || app == null) {
+                    nameLabel.setText(null);
+                    cbPermanent.setSelected(false);
+                    setGraphic(null);
+                    return;
+                }
                 nameLabel.setText(app.getAppName() + " (" + app.getProcessName() + ")");
 
-                // 避免重复绑定事件：先移除再添加
-                final var handlerRef = new Runnable[1];
-                handlerRef[0] = () -> {
+                cbPermanent.setSelected(app.isPermanent());
+                cbPermanent.setOnAction(event -> {
                     boolean selected = cbPermanent.isSelected();
                     if (selected && dao.countPermanent() >= 3) {
                         // 检查当前应用是否已经是永久（这样取消再勾选不算新增）
@@ -112,16 +133,8 @@ public class MonitorListController {
                     }
                     dao.setPermanent(app.getId(), selected);
                     app.setPermanent(selected);
-                    if (!selected) {
-                        app.setPermanentCancelledAt(java.time.LocalDateTime.now());
-                    }
-                };
-
-                cbPermanent.selectedProperty().addListener((obs, old, val) -> handlerRef[0].run());
-
-                // 设置当前状态（不触发事件）
-                boolean currentlyPermanent = app.isPermanent();
-                cbPermanent.selectedProperty().setValue(currentlyPermanent);
+                    app.setPermanentCancelledAt(selected ? null : java.time.LocalDateTime.now());
+                });
                 setGraphic(box);
             }
         });
@@ -137,22 +150,40 @@ public class MonitorListController {
     }
 
     private void loadIconAsync(ProcessInfo item) {
-        new Thread(() -> {
-            var icon = IconUtil.getIcon(item.getFullPath());
-            Platform.runLater(() -> {
-                item.setIcon(icon);
-                int index = processItems.indexOf(item);
-                if (index >= 0) lvProcessList.refresh();
-            });
-        }).start();
+        String path = item.getFullPath();
+        if (closed || path == null || path.isBlank() || failedIconPaths.contains(path) || !loadingIconPaths.add(path)) {
+            return;
+        }
+        BACKGROUND_EXECUTOR.execute(() -> {
+            try {
+                var icon = IconUtil.getIcon(path);
+                Platform.runLater(() -> {
+                    if (closed) return;
+                    if (icon == null) {
+                        failedIconPaths.add(path);
+                        return;
+                    }
+                    item.setIcon(icon);
+                    int index = processItems.indexOf(item);
+                    if (index >= 0) lvProcessList.refresh();
+                });
+            } catch (Exception e) {
+                failedIconPaths.add(path);
+            } finally {
+                loadingIconPaths.remove(path);
+            }
+        });
     }
 
     private void refreshProcesses() {
+        if (closed) return;
+        int generation = refreshGeneration.incrementAndGet();
         setStatus("正在刷新进程列表...");
+        btnRefreshProcesses.setDisable(true);
         processItems.clear();
         IconUtil.clearCache();
 
-        new Thread(() -> {
+        BACKGROUND_EXECUTOR.execute(() -> {
             List<ProcessInfo> processes = ProcessHandle.allProcesses()
                     .map(ph -> {
                         String fullPath = ph.info().command().orElse("");
@@ -167,15 +198,20 @@ public class MonitorListController {
                     .toList();
 
             Platform.runLater(() -> {
+                if (closed || generation != refreshGeneration.get()) return;
                 processItems.addAll(processes);
+                btnRefreshProcesses.setDisable(false);
                 setStatus("进程列表已刷新，共 " + processes.size() + " 个进程");
             });
-        }).start();
+        });
     }
 
     private void refreshMonitoredList() {
         monitoredItems.clear();
         monitoredItems.addAll(dao.findAll());
+        if (DatabaseUtil.consumeDatabaseRecreatedFlag()) {
+            setStatus("数据库文件已被重建，原有监控列表为空，请重新添加应用");
+        }
     }
 
     private void addSelectedToMonitor() {
@@ -223,5 +259,12 @@ public class MonitorListController {
             Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
             alert.showAndWait();
         });
+    }
+
+    @Override
+    public void close() {
+        closed = true;
+        refreshGeneration.incrementAndGet();
+        loadingIconPaths.clear();
     }
 }

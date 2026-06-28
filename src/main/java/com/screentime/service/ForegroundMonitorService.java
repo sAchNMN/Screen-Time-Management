@@ -1,17 +1,17 @@
 /* ============================================================
- *  ForegroundMonitorService.java — 前台窗口监控引擎
- *  后台定时检测用户当前活动窗口是否属于被监控应用：
- *    - 通过 WindowsNativeUtil 获取前台窗口进程名和完整路径
- *    - 与内存中缓存的监控列表对比（O(1) HashMap 查找）
- *    - 在焦点切换时写入 usage_records（开始/结束会话）
- *    - 短时停留自动丢弃（用户可自设阈值，默认 30 秒）
- *    - 每天凌晨自动将昨天数据聚合写入 daily_summary
+ *  ForegroundMonitorService.java - foreground window monitor
+ *  Polls the Windows foreground process and records focused usage
+ *  time for monitored applications only.
  *
- *  性能设计：
- *    - 仅 1 个守护线程
- *    - 每次轮询仅 1 次 JNA 调用 + 1 次 ProcessHandle.of()
- *    - DB 写入仅在焦点切换时发生
- *    - 监控列表缓存于内存（Map O(1) 查找），每 30 秒刷新一次
+ *  Data rules:
+ *    - start a session when a monitored app becomes foreground
+ *    - update a heartbeat while the same app stays foreground
+ *    - close sessions on app switch, idle timeout, polling stalls,
+ *      clock rollback, or monitor shutdown
+ *    - split completed sessions across midnight for daily summaries
+ *
+ *  Runtime design: one daemon scheduler thread, cached monitored app
+ *  lookup, and database writes only when state changes or heartbeats.
  * ============================================================ */
 package com.screentime.service;
 
@@ -47,26 +47,29 @@ public class ForegroundMonitorService {
     private final MonitoredAppDao monitoredAppDao = new MonitoredAppDao();
     private final AppSettingsDao settingsDao = new AppSettingsDao();
 
-    /* 调度器在 start() 中懒创建，stop() 后重建 */
+    /* Created in start(); rebuilt after stop(). */
     private ScheduledExecutorService scheduler;
 
-    // 当前正在使用的被监控应用（null 表示前台不是被监控应用）
+    // Currently focused monitored app; null when foreground is not monitored.
     private volatile Integer currentActiveAppId = null;
     private volatile LocalDateTime currentSessionStart = null;
 
-    // 被监控应用内存缓存（小写进程名 → MonitoredApp，O(1) 查找）
+    // Lower-case process name -> monitored app for O(1) foreground matching.
     private volatile Map<String, MonitoredApp> cachedAppMap = Map.of();
     private volatile LocalDateTime lastCacheRefresh = LocalDateTime.MIN;
 
-    // 应用完整路径缓存 (appId → fullPath)，供图标提取
+    // Full executable paths used for icon extraction.
     private final Map<Integer, String> appFullPathCache = new ConcurrentHashMap<>();
 
-    // 可动态调整的轮询间隔（秒）
     private volatile int pollIntervalSeconds = 15;
     private static final Duration CACHE_TTL = Duration.ofSeconds(30);
+    private static final long MIN_STALE_POLL_GAP_SECONDS = 120;
+    private volatile LocalDateTime lastPollAt = null;
+    private volatile long lastPollNano = 0L;
 
-    // 短时运行过滤阈值（秒），停留小于此值的记录自动丢弃
+    // Kept for settings compatibility; capture stores real short sessions.
     private volatile int minSessionSeconds = 30;
+    private volatile int idleTimeoutSeconds = 300;
 
     private static final long SECONDS_PER_DAY = 24 * 60 * 60;
     private static final long CLEANUP_INTERVAL_SECONDS = 5 * 60;
@@ -85,13 +88,13 @@ public class ForegroundMonitorService {
     }
 
     /**
-     * 启动后台监控引擎。
+     * Starts the background foreground monitor.
      */
     public synchronized void start() {
         if (running) return;
 
         if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
-            System.out.println("[ForegroundMonitorService] 非 Windows 系统，监控引擎未启动");
+            System.out.println("[ForegroundMonitorService] monitor is disabled on non-Windows systems");
             return;
         }
 
@@ -105,7 +108,7 @@ public class ForegroundMonitorService {
 
         running = true;
 
-        // 从设置读取轮询间隔
+        // Poll interval setting.
         try {
             pollIntervalSeconds = Integer.parseInt(settingsDao.get("poll_interval_seconds", "15"));
             pollIntervalSeconds = Math.max(1, Math.min(60, pollIntervalSeconds));
@@ -113,7 +116,7 @@ public class ForegroundMonitorService {
             pollIntervalSeconds = 15;
         }
 
-        // 从设置读取短时运行过滤阈值
+        // Minimum session setting retained for UI compatibility.
         try {
             minSessionSeconds = Integer.parseInt(settingsDao.get("min_session_seconds", "30"));
             minSessionSeconds = Math.max(1, minSessionSeconds);
@@ -121,8 +124,19 @@ public class ForegroundMonitorService {
             minSessionSeconds = 30;
         }
 
+        try {
+            idleTimeoutSeconds = Integer.parseInt(settingsDao.get("idle_timeout_seconds", "300"));
+            idleTimeoutSeconds = Math.max(30, idleTimeoutSeconds);
+        } catch (NumberFormatException e) {
+            idleTimeoutSeconds = 300;
+        }
+
         monitoredAppDao.initTable();
         usageRecordDao.initTable();
+        int recoveredOpenSessions = usageRecordDao.recoverOpenSessions(0);
+        if (recoveredOpenSessions > 0) {
+            System.out.println("[ForegroundMonitorService] recovered " + recoveredOpenSessions + " open usage sessions");
+        }
         refreshCache();
 
         startPolling();
@@ -135,7 +149,7 @@ public class ForegroundMonitorService {
                 TimeUnit.SECONDS
         );
 
-        // 过期数据清理任务（每 5 分钟检查一次）
+        // Expired app cleanup task.
         cleanupTask = scheduler.scheduleWithFixedDelay(
                 monitoredAppDao::cleanupExpiredNonPermanent,
                 5,
@@ -143,11 +157,11 @@ public class ForegroundMonitorService {
                 TimeUnit.SECONDS
         );
 
-        System.out.println("[ForegroundMonitorService] 监控引擎已启动，轮询间隔 " + pollIntervalSeconds + " 秒");
+        System.out.println("[ForegroundMonitorService] monitor started, poll interval " + pollIntervalSeconds + " seconds");
     }
 
     /**
-     * 停止后台监控引擎。
+     * Stops the background foreground monitor.
      */
     public synchronized void stop() {
         if (!running) return;
@@ -166,16 +180,18 @@ public class ForegroundMonitorService {
             cleanupTask = null;
         }
 
-        // 关闭当前会话（短时过滤）
-        closeCurrentSession();
+        // Close the current session before shutting down.
+        closeCurrentSession(LocalDateTime.now());
+        lastPollAt = null;
+        lastPollNano = 0L;
 
         if (scheduler != null && !scheduler.isShutdown()) {
             scheduler.shutdownNow();
         }
-        System.out.println("[ForegroundMonitorService] 监控引擎已停止");
+        System.out.println("[ForegroundMonitorService] monitor stopped");
     }
 
-    // ---- 公共 API ----
+    // ---- Public API ----
 
     public Image getAppIcon(int appId) {
         String path = appFullPathCache.get(appId);
@@ -192,7 +208,7 @@ public class ForegroundMonitorService {
     }
 
     /**
-     * 设置短时运行过滤阈值（秒）。
+     * Updates the minimum session setting.
      */
     public synchronized void setMinSessionSeconds(int seconds) {
         seconds = Math.max(1, seconds);
@@ -205,14 +221,32 @@ public class ForegroundMonitorService {
         return minSessionSeconds;
     }
 
-    // ---- 核心轮询逻辑 ----
+    // ---- Polling logic ----
 
     private void poll() {
         if (!running) return;
 
         try {
-            if (Duration.between(lastCacheRefresh, LocalDateTime.now()).toSeconds() > CACHE_TTL.toSeconds()) {
+            LocalDateTime now = LocalDateTime.now();
+            long nanoNow = System.nanoTime();
+            if (clockMovedBackwards(now)) {
+                closeCurrentSession(lastPollAt);
+                lastPollAt = now;
+                lastPollNano = nanoNow;
+                return;
+            }
+            closeSessionIfPollingStalled(now, nanoNow);
+            lastPollAt = now;
+            lastPollNano = nanoNow;
+
+            if (Duration.between(lastCacheRefresh, now).toSeconds() > CACHE_TTL.toSeconds()) {
                 refreshCache();
+            }
+
+            Optional<Long> idleSeconds = WindowsNativeUtil.getIdleSeconds();
+            if (idleSeconds.filter(seconds -> seconds >= idleTimeoutSeconds).isPresent()) {
+                closeCurrentSession(now.minusSeconds(idleSeconds.orElse((long) idleTimeoutSeconds)));
+                return;
             }
 
             Optional<WindowsNativeUtil.ForegroundProcessInfo> infoOpt =
@@ -231,49 +265,71 @@ public class ForegroundMonitorService {
                 cacheAppPath(matched.getId(), info.fullPath());
 
                 if (currentActiveAppId == null || !currentActiveAppId.equals(matched.getId())) {
-                    switchToApp(matched);
+                    switchToApp(matched, now);
+                } else {
+                    usageRecordDao.heartbeatSession(matched.getId(), now);
                 }
             } else {
-                closeCurrentSession();
+                closeCurrentSession(now);
             }
         } catch (Exception e) {
-            System.err.println("[ForegroundMonitorService] 轮询异常: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            System.err.println("[ForegroundMonitorService] polling failed: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            try {
+                closeCurrentSession(LocalDateTime.now());
+            } catch (Exception closeError) {
+                System.err.println("[ForegroundMonitorService] failed to close session after polling error: " + closeError.getMessage());
+            }
         }
     }
 
     /**
-     * 切换到新的被监控应用。
-     * 如果上一会话停留时间 < minSessionSeconds，则直接删除该记录，不保留。
+     * Switches to a newly focused monitored app.
      */
-    private void switchToApp(MonitoredApp app) {
-        closeCurrentSession();
 
-        LocalDateTime now = LocalDateTime.now();
+    private void switchToApp(MonitoredApp app, LocalDateTime now) {
+        closeCurrentSession(now);
+
         usageRecordDao.startSession(app.getId(), now);
         currentActiveAppId = app.getId();
         currentSessionStart = now;
     }
 
     /**
-     * 关闭当前会话。如果停留时间 < minSessionSeconds 则丢弃。
+     * Closes the current session, clamping rollback times to the start time.
      */
     private void closeCurrentSession() {
+        closeCurrentSession(LocalDateTime.now());
+    }
+
+    private void closeCurrentSession(LocalDateTime endTime) {
         if (currentActiveAppId == null || currentSessionStart == null) return;
-        long elapsed = Duration.between(currentSessionStart, LocalDateTime.now()).getSeconds();
-        if (elapsed < minSessionSeconds) {
-            usageRecordDao.deleteOpenSession(currentActiveAppId);
-        } else {
-            try {
-                usageRecordDao.endSession(currentActiveAppId, LocalDateTime.now());
-            } catch (Exception e) {
-                System.err.println("[ForegroundMonitorService] closeCurrentSession 失败: " + e.getMessage());
-            }
+        if (endTime.isBefore(currentSessionStart)) {
+            endTime = currentSessionStart;
+        }
+        try {
+            usageRecordDao.endSession(currentActiveAppId, endTime);
+        } catch (Exception e) {
+            System.err.println("[ForegroundMonitorService] closeCurrentSession failed: " + e.getMessage());
         }
         currentActiveAppId = null;
         currentSessionStart = null;
     }
 
-    // ---- 内部方法 ----
+    private boolean clockMovedBackwards(LocalDateTime now) {
+        return lastPollAt != null && now.isBefore(lastPollAt.minusSeconds(5));
+    }
+
+    private void closeSessionIfPollingStalled(LocalDateTime now, long nanoNow) {
+        if (lastPollAt == null || lastPollNano == 0L) return;
+        long gapSeconds = TimeUnit.NANOSECONDS.toSeconds(nanoNow - lastPollNano);
+        long maxExpectedGap = Math.max(MIN_STALE_POLL_GAP_SECONDS, pollIntervalSeconds * 3L);
+        if (gapSeconds > maxExpectedGap) {
+            closeCurrentSession(lastPollAt);
+            System.out.println("[ForegroundMonitorService] polling stalled for " + gapSeconds + " seconds; current session truncated");
+        }
+    }
+
+    // ---- Internal helpers ----
 
     private void startPolling() {
         if (pollingTask != null) {
@@ -305,7 +361,9 @@ public class ForegroundMonitorService {
                 appFullPathCache.keySet().retainAll(currentIds);
             }
         } catch (Exception e) {
-            System.err.println("[ForegroundMonitorService] 刷新监控列表缓存失败: " + e.getMessage());
+            System.err.println("[ForegroundMonitorService] failed to refresh monitored app cache: " + e.getMessage());
+            cachedAppMap = Map.of();
+            closeCurrentSession(LocalDateTime.now());
         }
     }
 

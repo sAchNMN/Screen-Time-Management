@@ -13,13 +13,17 @@ CREATE TABLE IF NOT EXISTS monitored_apps (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     app_name    TEXT NOT NULL,
     process_name TEXT NOT NULL,
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active   INTEGER DEFAULT 1,
+    is_permanent INTEGER DEFAULT 0,
+    permanent_cancelled_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS usage_records (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     app_id      INTEGER NOT NULL,
     start_time  TIMESTAMP NOT NULL,
+    last_seen_time TIMESTAMP,
     end_time    TIMESTAMP,
     duration_seconds INTEGER,
     FOREIGN KEY (app_id) REFERENCES monitored_apps(id)

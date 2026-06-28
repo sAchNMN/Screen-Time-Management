@@ -8,8 +8,12 @@
  * ============================================================ */
 package com.screentime.util;
 
+import com.sun.jna.Native;
+import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef;
+import com.sun.jna.platform.win32.WinNT;
+import com.sun.jna.platform.win32.WinUser;
 import com.sun.jna.ptr.IntByReference;
 
 import java.util.Optional;
@@ -45,15 +49,57 @@ public class WindowsNativeUtil {
                 return Optional.empty();
             }
 
+            Optional<String> nativePath = queryProcessImagePath(pid);
+            if (nativePath.isPresent()) {
+                String fullPath = nativePath.get();
+                return Optional.of(new ForegroundProcessInfo(extractFileName(fullPath), fullPath));
+            }
+
             return ProcessHandle.of(pid)
                     .flatMap(ph -> ph.info().command())
-                    .map(fullPath -> new ForegroundProcessInfo(
-                            extractFileName(fullPath),
-                            fullPath
-                    ));
+                    .map(fullPath -> new ForegroundProcessInfo(extractFileName(fullPath), fullPath));
         } catch (Exception e) {
             System.err.println("[WindowsNativeUtil] 获取前台窗口失败: " + e.getMessage());
             return Optional.empty();
+        }
+    }
+
+    public static Optional<Long> getIdleSeconds() {
+        try {
+            WinUser.LASTINPUTINFO info = new WinUser.LASTINPUTINFO();
+            if (!User32.INSTANCE.GetLastInputInfo(info)) {
+                return Optional.empty();
+            }
+            long now = Integer.toUnsignedLong(Kernel32.INSTANCE.GetTickCount());
+            long lastInput = Integer.toUnsignedLong(info.dwTime);
+            long idleMillis = now >= lastInput ? now - lastInput : 0;
+            return Optional.of(idleMillis / 1000);
+        } catch (Exception e) {
+            System.err.println("[WindowsNativeUtil] failed to query idle time: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<String> queryProcessImagePath(int pid) {
+        WinNT.HANDLE process = Kernel32.INSTANCE.OpenProcess(
+                WinNT.PROCESS_QUERY_LIMITED_INFORMATION,
+                false,
+                pid
+        );
+        if (process == null) {
+            return Optional.empty();
+        }
+
+        try {
+            char[] buffer = new char[WinDef.MAX_PATH * 4];
+            IntByReference size = new IntByReference(buffer.length);
+            boolean ok = Kernel32.INSTANCE.QueryFullProcessImageName(process, 0, buffer, size);
+            if (!ok || size.getValue() <= 0) {
+                return Optional.empty();
+            }
+            return Optional.of(Native.toString(buffer));
+        } finally {
+            Kernel32.INSTANCE.CloseHandle(process);
         }
     }
 

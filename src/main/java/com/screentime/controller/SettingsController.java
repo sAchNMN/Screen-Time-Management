@@ -1,7 +1,6 @@
 /* ============================================================
- *  SettingsController.java — 设置页面控制器
- *  管理应用级偏好设置：
- *    - 读取/写入"关闭时最小化到系统托盘"选项
+ *  SettingsController.java - settings page controller
+ *  Manages application preferences and CSV import/export.
  * ============================================================ */
 package com.screentime.controller;
 
@@ -10,6 +9,7 @@ import com.screentime.dao.AppSettingsDao;
 import com.screentime.dao.UsageRecordDao;
 import com.screentime.service.ForegroundMonitorService;
 import com.screentime.util.StartupUtil;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.stage.FileChooser;
@@ -17,6 +17,7 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -37,17 +38,14 @@ public class SettingsController {
     @FXML
     private Button btnImport;
 
-
     private final AppSettingsDao settingsDao = new AppSettingsDao();
     private final UsageRecordDao usageRecordDao = new UsageRecordDao();
-
-    private int importedCount = 0;
 
     @FXML
     public void initialize() {
         settingsDao.initTable();
 
-        // ---- 关闭到托盘 ----
+        // ---- Minimize to tray ----
         boolean saved = "true".equals(settingsDao.get("close_to_tray", "true"));
         cbMinimizeToTray.setSelected(saved);
         App.setCloseToTray(saved);
@@ -58,7 +56,7 @@ public class SettingsController {
             settingsDao.set("close_to_tray", String.valueOf(enabled));
         });
 
-        // ---- 开机自启 ----
+        // ---- Start with Windows ----
         cbStartup.setSelected(StartupUtil.isStartupEnabled());
         cbStartup.setOnAction(e -> {
             boolean enabled = cbStartup.isSelected();
@@ -66,14 +64,14 @@ public class SettingsController {
             updateStartMinimizedState();
         });
 
-        // ---- 开机静默启动 ----
+        // ---- Start minimized ----
         cbStartMinimized.setSelected("true".equals(settingsDao.get("start_minimized", "false")));
         cbStartMinimized.setOnAction(e -> {
             settingsDao.set("start_minimized", String.valueOf(cbStartMinimized.isSelected()));
         });
         updateStartMinimizedState();
 
-        // ---- 短时运行过滤 ----
+        // ---- Minimum session setting ----
         int minSession = getIntSetting("min_session_seconds", 30);
         minSession = Math.max(1, minSession);
         SpinnerValueFactory<Integer> factory =
@@ -90,14 +88,12 @@ public class SettingsController {
             ForegroundMonitorService.getInstance().setMinSessionSeconds(val);
         });
 
-        // ---- 数据导出 ----
+        // ---- Data export ----
         btnExport.setOnAction(e -> exportData());
 
-        // ---- 数据导入 ----
+        // ---- Data import ----
         btnImport.setOnAction(e -> importData());
-
     }
-
 
     private void showHint(String message, boolean isError) {
         lblSaveHint.setText(message);
@@ -114,7 +110,7 @@ public class SettingsController {
     }
 
     /**
-     * 当开机自启关闭时，锁定开机静默启动也为关闭状态。
+     * Disables start-minimized when startup is disabled.
      */
     private void updateStartMinimizedState() {
         if (!cbStartup.isSelected()) {
@@ -128,88 +124,140 @@ public class SettingsController {
 
     private void exportData() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("导出使用记录");
+        chooser.setTitle("Export usage records");
         chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("CSV 文件 (*.csv)", "*.csv"));
+                new FileChooser.ExtensionFilter("CSV files (*.csv)", "*.csv"));
         chooser.setInitialFileName("screen-time-export.csv");
 
         File file = chooser.showSaveDialog(btnExport.getScene().getWindow());
         if (file == null) return;
 
-        try (PrintWriter pw = new PrintWriter(file, StandardCharsets.UTF_8)) {
-            List<String[]> rows = usageRecordDao.getExportRows();
-            for (String[] row : rows) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < row.length; i++) {
-                    if (i > 0) sb.append(",");
-                    String val = row[i];
-                    if (val != null && (val.contains(",") || val.contains("\"") || val.contains(" "))) {
-                        sb.append("\"").append(val.replace("\"", "\"\"")).append("\"");
-                    } else if (val != null) {
-                        sb.append(val);
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                try (PrintWriter pw = new PrintWriter(file, StandardCharsets.UTF_8)) {
+                    List<String[]> rows = usageRecordDao.getExportRows();
+                    for (String[] row : rows) {
+                        pw.println(toCsvLine(row));
                     }
                 }
-                pw.println(sb);
+                return null;
             }
-            showHint("导出成功：" + file.getName(), false);
-        } catch (Exception ex) {
-            showHint("导出失败：" + ex.getMessage(), true);
-        }
+        };
+        task.setOnSucceeded(e -> {
+            setDataButtonsDisabled(false);
+            showHint("Export succeeded: " + file.getName(), false);
+        });
+        task.setOnFailed(e -> {
+            setDataButtonsDisabled(false);
+            showHint("Export failed: " + task.getException().getMessage(), true);
+        });
+        setDataButtonsDisabled(true);
+        startBackgroundTask(task, "settings-export");
     }
 
     private void importData() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("导入使用记录");
+        chooser.setTitle("Import usage records");
         chooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("CSV 文件 (*.csv)", "*.csv"));
+                new FileChooser.ExtensionFilter("CSV files (*.csv)", "*.csv"));
 
         File file = chooser.showOpenDialog(btnImport.getScene().getWindow());
         if (file == null) return;
 
-        try {
-            List<String[]> rows = parseCsv(file);
-            if (rows.size() <= 1) {
-                showHint("导入失败：CSV 文件为空或只有标题行", true);
-                return;
+        Task<UsageRecordDao.ImportResult> task = new Task<>() {
+            @Override
+            protected UsageRecordDao.ImportResult call() throws Exception {
+                List<String[]> rows = parseCsv(file);
+                if (rows.size() <= 1) {
+                    throw new IllegalArgumentException("CSV file is empty or only contains a header row");
+                }
+                return usageRecordDao.importRowsDetailed(rows);
             }
-
-            int count = usageRecordDao.importRows(rows);
-            if (count >= 0) {
-                showHint("导入成功，已追加 " + count + " 条记录", false);
+        };
+        task.setOnSucceeded(e -> {
+            setDataButtonsDisabled(false);
+            UsageRecordDao.ImportResult result = task.getValue();
+            if (result.success()) {
+                String message = "Import finished: " + result.imported() + " imported";
+                if (result.skipped() > 0) {
+                    message += ", " + result.skipped() + " skipped";
+                }
+                showHint(message, result.skipped() > 0);
             } else {
-                showHint("导入失败，请检查 CSV 格式", true);
+                showHint("Import failed; skipped " + result.skipped() + " rows", true);
             }
-        } catch (Exception ex) {
-            showHint("导入失败：" + ex.getMessage(), true);
+        });
+        task.setOnFailed(e -> {
+            setDataButtonsDisabled(false);
+            showHint("Import failed: " + task.getException().getMessage(), true);
+        });
+        setDataButtonsDisabled(true);
+        startBackgroundTask(task, "settings-import");
+    }
+
+    private static void startBackgroundTask(Task<?> task, String name) {
+        Thread thread = new Thread(task, name);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void setDataButtonsDisabled(boolean disabled) {
+        btnExport.setDisable(disabled);
+        btnImport.setDisable(disabled);
+    }
+
+    private static String toCsvLine(String[] row) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < row.length; i++) {
+            if (i > 0) sb.append(",");
+            String val = row[i];
+            if (val != null && (val.contains(",") || val.contains("\"") || val.contains(" "))) {
+                sb.append("\"").append(val.replace("\"", "\"\"")).append("\"");
+            } else if (val != null) {
+                sb.append(val);
+            }
         }
+        return sb.toString();
     }
 
     /**
-     * 解析 CSV 文件，处理带引号的字段。
+     * Parses a CSV file with quoted fields.
      */
     private List<String[]> parseCsv(File file) throws Exception {
         List<String[]> rows = new ArrayList<>();
-        List<String> lines = java.nio.file.Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
-        for (String line : lines) {
-            if (line.isBlank()) continue;
-            // 简单的 CSV 行解析（处理引号包裹的字段）
-            List<String> fields = new ArrayList<>();
-            StringBuilder current = new StringBuilder();
-            boolean inQuotes = false;
-            for (int i = 0; i < line.length(); i++) {
-                char c = line.charAt(i);
-                if (c == '"') {
-                    inQuotes = !inQuotes;
-                } else if (c == ',' && !inQuotes) {
-                    fields.add(current.toString().trim());
-                    current.setLength(0);
-                } else {
-                    current.append(c);
-                }
-            }
-            fields.add(current.toString().trim());
-            rows.add(fields.toArray(new String[0]));
+        try (var stream = Files.lines(file.toPath(), StandardCharsets.UTF_8)) {
+            stream.filter(line -> !line.isBlank())
+                    .map(SettingsController::parseCsvLine)
+                    .forEach(rows::add);
         }
         return rows;
+    }
+
+    static String[] parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"');
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (c == ',' && !inQuotes) {
+                fields.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (inQuotes) {
+            throw new IllegalArgumentException("CSV row has an unclosed quote");
+        }
+        fields.add(current.toString().trim());
+        return fields.toArray(new String[0]);
     }
 }
