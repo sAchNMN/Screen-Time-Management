@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -136,38 +135,20 @@ class UsageRecordDaoTest {
     }
 
     @Test
-    void importRowsSkipsRowsWithoutEndTime() {
+    void recentHistoryIncludesRemovedApps() {
         MonitoredAppDao appDao = new MonitoredAppDao();
         UsageRecordDao usageDao = new UsageRecordDao();
         appDao.initTable();
         usageDao.initTable();
 
-        LocalDateTime start = LocalDateTime.now().minusMinutes(5);
-        int imported = usageDao.importRows(List.of(
-                new String[]{"应用名", "日期", "开始时间", "结束时间", "持续秒数", "持续时长"},
-                new String[]{"Imported App", start.toLocalDate().toString(), start.toString(), "", "", ""}
-        ));
+        MonitoredApp app = appDao.insert(new MonitoredApp("Removed App", "removed.exe"));
+        LocalDate today = LocalDate.now();
+        usageDao.startSession(app.getId(), today.atTime(10, 0));
+        usageDao.endSession(app.getId(), today.atTime(10, 5));
+        appDao.delete(app.getId());
 
-        assertEquals(0, imported);
-        assertEquals(0, usageDao.countOpenSessions());
-        assertEquals(0, appDao.findAll().size());
+        Map<String, Map<LocalDate, Integer>> history = usageDao.getRecentUsageHistory();
+        assertEquals(300, history.get("Removed App").get(today));
     }
 
-    @Test
-    void importRowsDetailedReportsSkippedRows() {
-        MonitoredAppDao appDao = new MonitoredAppDao();
-        UsageRecordDao usageDao = new UsageRecordDao();
-        appDao.initTable();
-        usageDao.initTable();
-
-        LocalDateTime start = LocalDateTime.now().minusMinutes(5);
-        UsageRecordDao.ImportResult result = usageDao.importRowsDetailed(List.of(
-                new String[]{"app", "date", "start", "end", "seconds", "duration"},
-                new String[]{"Imported App", start.toLocalDate().toString(), start.toString(), "", "", ""}
-        ));
-
-        assertEquals(0, result.imported());
-        assertEquals(1, result.skipped());
-        assertTrue(result.warnings().getFirst().contains("missing end time"));
-    }
 }

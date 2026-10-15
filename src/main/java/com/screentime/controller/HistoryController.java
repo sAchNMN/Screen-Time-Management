@@ -35,6 +35,7 @@ public class HistoryController {
 
     @FXML
     public void initialize() {
+        // 历史页是只读展示页面：配置表格列后立即加载最近使用数据。
         colHistoryApp.setCellValueFactory(new PropertyValueFactory<>("appName"));
         colHistoryDate.setCellValueFactory(new PropertyValueFactory<>("date"));
         colHistoryDuration.setCellValueFactory(new PropertyValueFactory<>("duration"));
@@ -46,6 +47,7 @@ public class HistoryController {
     }
 
     private void refreshData() {
+        // 每次刷新都重新从 DAO 拉取聚合后的历史数据，避免显示旧缓存。
         historyData.clear();
 
         // 使用 getRecentUsageHistory() 替代 getAllDailySummaries()，
@@ -77,6 +79,7 @@ public class HistoryController {
     }
 
     public static class HistoryRow {
+        // 表格行模型：将 LocalDate 和秒数提前格式化为适合页面展示的字符串。
         private final String appName;
         private final String date;
         private final String duration;

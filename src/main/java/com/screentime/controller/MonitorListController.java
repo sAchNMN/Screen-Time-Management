@@ -62,6 +62,7 @@ public class MonitorListController implements AutoCloseable {
 
     @FXML
     public void initialize() {
+        // 初始化页面：绑定两个列表、配置单元格渲染、绑定按钮事件，并加载初始数据。
         dao.initTable();
 
         // 绑定列表
@@ -150,6 +151,7 @@ public class MonitorListController implements AutoCloseable {
     }
 
     private void loadIconAsync(ProcessInfo item) {
+        // 图标提取可能访问文件系统，不能放在 JavaFX UI 线程中执行，否则页面会卡顿。
         String path = item.getFullPath();
         if (closed || path == null || path.isBlank() || failedIconPaths.contains(path) || !loadingIconPaths.add(path)) {
             return;
@@ -177,6 +179,7 @@ public class MonitorListController implements AutoCloseable {
 
     private void refreshProcesses() {
         if (closed) return;
+        // generation 用来丢弃过期刷新结果：如果用户连续点击刷新，只保留最后一次结果。
         int generation = refreshGeneration.incrementAndGet();
         setStatus("正在刷新进程列表...");
         btnRefreshProcesses.setDisable(true);
@@ -185,6 +188,7 @@ public class MonitorListController implements AutoCloseable {
 
         BACKGROUND_EXECUTOR.execute(() -> {
             List<ProcessInfo> processes = ProcessHandle.allProcesses()
+                    // ProcessHandle 是 JDK 自带 API，用来枚举当前系统中的所有进程。
                     .map(ph -> {
                         String fullPath = ph.info().command().orElse("");
                         String name = fullPath;
@@ -207,6 +211,7 @@ public class MonitorListController implements AutoCloseable {
     }
 
     private void refreshMonitoredList() {
+        // 左侧进程列表来自系统，右侧监控列表来自数据库。
         monitoredItems.clear();
         monitoredItems.addAll(dao.findAll());
         if (DatabaseUtil.consumeDatabaseRecreatedFlag()) {
@@ -215,6 +220,7 @@ public class MonitorListController implements AutoCloseable {
     }
 
     private void addSelectedToMonitor() {
+        // 将用户选中的运行进程写入 monitored_apps，后续后台监控服务会按 process_name 匹配。
         var selected = lvProcessList.getSelectionModel().getSelectedItems();
         if (selected.isEmpty()) {
             showAlert("请先在进程列表中选中要监控的软件");
@@ -240,6 +246,7 @@ public class MonitorListController implements AutoCloseable {
     }
 
     private void removeSelected() {
+        // 删除使用软删除：DAO 只把 is_active 置为 0，历史使用记录不会被破坏。
         MonitoredApp selected = lvMonitoredApps.getSelectionModel().getSelectedItem();
         if (selected == null) {
             showAlert("请先在监控列表中选中要移除的软件");
@@ -263,6 +270,7 @@ public class MonitorListController implements AutoCloseable {
 
     @Override
     public void close() {
+        // 页面切走后停止接收异步刷新结果，防止后台任务更新已经不可见的 ListView。
         closed = true;
         refreshGeneration.incrementAndGet();
         loadingIconPaths.clear();

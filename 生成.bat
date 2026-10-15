@@ -1,0 +1,14 @@
+jpackage ^
+  --type app-image ^
+  --name ScreenTimeManager ^
+  --app-version 1.0.0 ^
+  --vendor sAchNMN ^
+  --input target ^
+  --main-jar screen-time-management-1.0-SNAPSHOT-jar-with-dependencies.jar ^
+  --main-class com.screentime.Main ^
+  --dest dist ^
+  --icon target\icon.ico ^
+  --java-options "--enable-native-access=ALL-UNNAMED" ^
+  --java-options "-Dfile.encoding=UTF-8" ^
+  --java-options "-Dsun.stdout.encoding=UTF-8" ^
+  --java-options "-Dsun.stderr.encoding=UTF-8"

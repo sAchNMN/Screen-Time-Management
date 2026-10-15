@@ -30,8 +30,6 @@ public class MainController {
     @FXML
     private Button btnStatistics;
     @FXML
-    private Button btnChart;
-    @FXML
     private Button btnHistory;
     @FXML
     private Button btnSettings;
@@ -41,22 +39,21 @@ public class MainController {
     private final Map<String, Button> navButtons = new HashMap<>();
     private static final String NAV_MONITOR = "monitor";
     private static final String NAV_STATISTICS = "statistics";
-    private static final String NAV_CHART = "chart";
     private static final String NAV_HISTORY = "history";
     private static final String NAV_SETTINGS = "settings";
     private AutoCloseable currentController;
 
     @FXML
     public void initialize() {
+        // 主界面只负责导航，不直接处理业务数据。
+        // 每个页面的具体逻辑由对应 Controller 自己完成，便于答辩时按模块拆分讲解。
         navButtons.put(NAV_MONITOR, btnMonitorList);
         navButtons.put(NAV_STATISTICS, btnStatistics);
-        navButtons.put(NAV_CHART, btnChart);
         navButtons.put(NAV_HISTORY, btnHistory);
         navButtons.put(NAV_SETTINGS, btnSettings);
 
         btnMonitorList.setOnAction(e -> navigateTo(NAV_MONITOR));
         btnStatistics.setOnAction(e -> navigateTo(NAV_STATISTICS));
-        btnChart.setOnAction(e -> navigateTo(NAV_CHART));
         btnHistory.setOnAction(e -> navigateTo(NAV_HISTORY));
         btnSettings.setOnAction(e -> navigateTo(NAV_SETTINGS));
 
@@ -72,10 +69,10 @@ public class MainController {
     }
 
     private void navigateTo(String navKey) {
+        // 根据左侧导航 key 选择对应 FXML 页面，并把页面放入 contentArea。
         String fxmlFile = switch (navKey) {
             case NAV_MONITOR -> "/fxml/monitor-list.fxml";
             case NAV_STATISTICS -> "/fxml/statistics.fxml";
-            case NAV_CHART -> "/fxml/chart.fxml";
             case NAV_HISTORY -> "/fxml/history.fxml";
             case NAV_SETTINGS -> "/fxml/settings.fxml";
             default -> "/fxml/monitor-list.fxml";
@@ -84,6 +81,7 @@ public class MainController {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlFile));
             Node page = loader.load();
+            // 切换页面前关闭旧页面，避免旧页面的异步刷新继续操作已离开的界面。
             closeCurrentController();
             contentArea.getChildren().setAll(page);
             Object controller = loader.getController();
@@ -99,6 +97,7 @@ public class MainController {
     }
 
     private void updateNavSelection(String navKey) {
+        // 通过按钮背景色标识当前所在页面。
         for (Map.Entry<String, Button> entry : navButtons.entrySet()) {
             Button btn = entry.getValue();
             if (entry.getKey().equals(navKey)) {
@@ -110,6 +109,7 @@ public class MainController {
     }
 
     private void closeCurrentController() {
+        // 只有实现 AutoCloseable 的页面才需要释放资源，例如监控列表页面的异步图标加载。
         if (currentController == null) return;
         try {
             currentController.close();

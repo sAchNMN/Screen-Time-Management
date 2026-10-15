@@ -33,6 +33,7 @@ public class DatabaseUtil {
     }
 
     public static Connection getConnection() throws SQLException {
+        // DAO 层每次拿连接时都会确保 schema 已存在，降低调用方忘记初始化的风险。
         String dbUrl = getDbUrl();
         Connection conn = DriverManager.getConnection(dbUrl);
         if (!INITIALIZING.get()) {
@@ -51,6 +52,7 @@ public class DatabaseUtil {
     }
 
     public static void initializeSchema() {
+        // 显式初始化入口；ThreadLocal 防止初始化过程中再次递归触发 ensureSchema。
         INITIALIZING.set(true);
         try (Connection conn = DriverManager.getConnection(getDbUrl())) {
             ensureSchema(conn);
@@ -66,6 +68,7 @@ public class DatabaseUtil {
     }
 
     private static void ensureSchema(Connection conn) {
+        // schema.sql 是统一的建表脚本；所有 DAO 共用，避免表结构分散在多个类里。
         try (var in = DatabaseUtil.class.getResourceAsStream("/database/schema.sql")) {
             if (in == null) {
                 throw new RuntimeException("Database schema resource not found");
@@ -86,6 +89,7 @@ public class DatabaseUtil {
     }
 
     private static void applyMigrations(Statement stmt) throws SQLException {
+        // 旧版本数据库可能缺少新列，迁移逻辑用“尝试添加，重复则忽略”的方式兼容。
         tryAddColumn(stmt, "usage_records", "last_seen_time", "TIMESTAMP");
     }
 
@@ -102,6 +106,7 @@ public class DatabaseUtil {
     }
 
     private static String getDbUrl() {
+        // 测试可通过 screentime.db.path 指定临时数据库；正式运行默认放在用户目录 ScreenTime 下。
         String override = System.getProperty("screentime.db.path");
         if (override != null && !override.isBlank()) {
             Path path = Path.of(override).toAbsolutePath();

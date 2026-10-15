@@ -29,6 +29,8 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) throws Exception {
+        // 应用启动的主流程：先准备设置表，再加载主界面，最后启动后台监控服务。
+        // 答辩时可以把这里理解为“程序总装配入口”。
         settingsDao.initTable();
         closeToTray = !"false".equals(settingsDao.get("close_to_tray", "true"));
 
@@ -55,6 +57,7 @@ public class App extends Application {
 
         setupTray(primaryStage);
 
+        // 关闭窗口时不一定退出程序；如果开启“最小化到托盘”，窗口隐藏但监控线程继续运行。
         primaryStage.setOnCloseRequest(event -> {
             saveWindowSize(primaryStage);
             if (closeToTray && traySupported) {
@@ -77,6 +80,9 @@ public class App extends Application {
         }
     }
 
+    /**
+     * 从设置表读取上次窗口尺寸；读取失败时回退到默认尺寸。
+     */
     private double getSavedSize(String key, double defaultVal) {
         try {
             String val = settingsDao.get(key, null);
@@ -88,11 +94,18 @@ public class App extends Application {
         return defaultVal;
     }
 
+    /**
+     * 保存窗口尺寸，下一次启动时恢复用户上次使用的窗口大小。
+     */
     private void saveWindowSize(Stage stage) {
         settingsDao.set("window_width", String.valueOf((int) stage.getWidth()));
         settingsDao.set("window_height", String.valueOf((int) stage.getHeight()));
     }
 
+    /**
+     * 创建 Windows 系统托盘图标和右键菜单。
+     * 托盘负责两件事：重新显示主窗口、彻底退出程序。
+     */
     private void setupTray(Stage stage) {
         if (!SystemTray.isSupported()) {
             traySupported = false;
@@ -142,6 +155,9 @@ public class App extends Application {
         }
     }
 
+    /**
+     * 当资源目录中没有 icon.png 时创建一个简单备用图标，避免托盘初始化失败。
+     */
     private BufferedImage createFallbackIcon() {
         BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2d = image.createGraphics();

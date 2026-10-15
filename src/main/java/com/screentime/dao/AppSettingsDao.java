@@ -22,6 +22,7 @@ public class AppSettingsDao {
     }
 
     public String get(String key, String defaultValue) {
+        // 设置不存在或读取失败时返回默认值，保证界面初始化不会因为配置缺失而失败。
         String sql = "SELECT value FROM app_settings WHERE key = ?";
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -38,6 +39,7 @@ public class AppSettingsDao {
     }
 
     public void set(String key, String value) {
+        // app_settings 使用 key-value 结构，新增设置项不需要修改表结构。
         String sql = "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)";
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {

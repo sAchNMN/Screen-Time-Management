@@ -61,6 +61,8 @@ public class MonitoredAppDao {
     }
 
     public MonitoredApp insert(MonitoredApp app) {
+        // 如果同一进程曾被删除过，重新添加时复用原记录 ID。
+        // 这样历史使用记录仍然能和该应用关联起来。
         String findInactiveSql = "SELECT id FROM monitored_apps WHERE process_name = ? AND is_active = 0 LIMIT 1";
         try (Connection conn = DatabaseUtil.getConnection()) {
             conn.setAutoCommit(false);
@@ -105,6 +107,7 @@ public class MonitoredAppDao {
     }
 
     public void delete(int id) {
+        // 软删除：只把应用从当前监控列表隐藏，不删除 usage_records 和 daily_summary。
         String sql = "UPDATE monitored_apps SET is_active = 0 WHERE id = ?";
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -116,6 +119,7 @@ public class MonitoredAppDao {
     }
 
     public boolean existsByProcessName(String processName) {
+        // 防止用户重复添加同一个进程名。
         String sql = "SELECT COUNT(*) FROM monitored_apps WHERE process_name = ? AND is_active = 1";
         try (Connection conn = DatabaseUtil.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -131,6 +135,7 @@ public class MonitoredAppDao {
     // ---- 永久显示 ----
 
     public void setPermanent(int appId, boolean permanent) {
+        // 永久显示表示该应用长期保留在统计视图中；取消时记录取消时间，供清理任务延迟处理。
         String sql = permanent
                 ? "UPDATE monitored_apps SET is_permanent = 1, permanent_cancelled_at = NULL WHERE id = ?"
                 : "UPDATE monitored_apps SET is_permanent = 0, permanent_cancelled_at = ? WHERE id = ?";
@@ -149,6 +154,7 @@ public class MonitoredAppDao {
     }
 
     public int countPermanent() {
+        // 页面层用这个数量限制“永久显示”最多 3 个。
         String sql = "SELECT COUNT(*) FROM monitored_apps WHERE is_active = 1 AND is_permanent = 1";
         try (Connection conn = DatabaseUtil.getConnection();
              Statement stmt = conn.createStatement();

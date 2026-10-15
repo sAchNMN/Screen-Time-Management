@@ -1,17 +1,13 @@
 /* ============================================================
- *  ForegroundMonitorService.java - foreground window monitor
- *  Polls the Windows foreground process and records focused usage
- *  time for monitored applications only.
- *
- *  Data rules:
- *    - start a session when a monitored app becomes foreground
- *    - update a heartbeat while the same app stays foreground
- *    - close sessions on app switch, idle timeout, polling stalls,
- *      clock rollback, or monitor shutdown
- *    - split completed sessions across midnight for daily summaries
- *
- *  Runtime design: one daemon scheduler thread, cached monitored app
- *  lookup, and database writes only when state changes or heartbeats.
+ * ForegroundMonitorService.java - 前台窗口监控服务
+ * 轮询 Windows 前台进程，并仅针对受监控的应用程序记录其聚焦使用时长。
+ * 数据规则：
+ *   - 当受监控应用切换至前台时，开启一个会话；
+ *   - 若同一应用持续保持前台状态，则定期更新心跳记录；
+ *   - 当发生应用切换、空闲超时、轮询停滞、
+ *   - 系统时钟回拨或监控服务关闭时，结束当前会话；
+ *   - 将已完成的会话按午夜时间点进行拆分，以便生成每日统计摘要。
+ * 运行时设计：采用单个守护调度线程，缓存受监控应用的查询结果，
  * ============================================================ */
 package com.screentime.service;
 
@@ -88,7 +84,12 @@ public class ForegroundMonitorService {
     }
 
     /**
-     * Starts the background foreground monitor.
+     * 启动后台监控器。
+     *
+     * 主要步骤：
+     * 1. 读取轮询间隔、最短会话、空闲超时等设置。
+     * 2. 初始化数据库表并恢复上次异常退出留下的未关闭会话。
+     * 3. 定时轮询前台窗口，同时安排每日汇总和过期数据清理任务。
      */
     public synchronized void start() {
         if (running) return;
@@ -161,7 +162,9 @@ public class ForegroundMonitorService {
     }
 
     /**
-     * Stops the background foreground monitor.
+     * 停止后台监控器。
+     *
+     * 停止前必须关闭当前会话，否则最后一段使用时间会一直处于 end_time=NULL 状态。
      */
     public synchronized void stop() {
         if (!running) return;
@@ -193,6 +196,10 @@ public class ForegroundMonitorService {
 
     // ---- Public API ----
 
+    /**
+     * 供统计页面显示图标使用。
+     * 监控线程在轮询前台窗口时会缓存 appId -> exe 路径，这里再从路径提取图标。
+     */
     public Image getAppIcon(int appId) {
         String path = appFullPathCache.get(appId);
         if (path != null) {
@@ -201,6 +208,10 @@ public class ForegroundMonitorService {
         return null;
     }
 
+    /**
+     * 缓存应用的完整可执行文件路径。
+     * 数据库只保存进程名，完整路径来自 Windows 当前运行进程信息。
+     */
     public void cacheAppPath(int appId, String fullPath) {
         if (fullPath != null && !fullPath.isBlank()) {
             appFullPathCache.put(appId, fullPath);
@@ -227,6 +238,7 @@ public class ForegroundMonitorService {
         if (!running) return;
 
         try {
+            // 轮询是监控状态机的核心：拿到当前前台进程，再决定“开始、延续、结束”哪个动作。
             LocalDateTime now = LocalDateTime.now();
             long nanoNow = System.nanoTime();
             if (clockMovedBackwards(now)) {
@@ -245,6 +257,7 @@ public class ForegroundMonitorService {
 
             Optional<Long> idleSeconds = WindowsNativeUtil.getIdleSeconds();
             if (idleSeconds.filter(seconds -> seconds >= idleTimeoutSeconds).isPresent()) {
+                // 用户长时间没有键鼠输入时，按最后输入时间截断会话，而不是继续累计到当前时刻。
                 closeCurrentSession(now.minusSeconds(idleSeconds.orElse((long) idleTimeoutSeconds)));
                 return;
             }
@@ -265,11 +278,14 @@ public class ForegroundMonitorService {
                 cacheAppPath(matched.getId(), info.fullPath());
 
                 if (currentActiveAppId == null || !currentActiveAppId.equals(matched.getId())) {
+                    // 前台切换到新的被监控应用：先关闭旧会话，再开启新会话。
                     switchToApp(matched, now);
                 } else {
+                    // 仍然是同一个应用：只更新 last_seen_time，表示会话还活着。
                     usageRecordDao.heartbeatSession(matched.getId(), now);
                 }
             } else {
+                // 前台不是被监控应用，当前会话结束。
                 closeCurrentSession(now);
             }
         } catch (Exception e) {
@@ -283,7 +299,8 @@ public class ForegroundMonitorService {
     }
 
     /**
-     * Switches to a newly focused monitored app.
+     * 切换到新聚焦的被监控应用。
+     * 数据库层只允许一个未关闭会话，因此这里先收尾旧会话，再创建新会话。
      */
 
     private void switchToApp(MonitoredApp app, LocalDateTime now) {
@@ -319,6 +336,10 @@ public class ForegroundMonitorService {
         return lastPollAt != null && now.isBefore(lastPollAt.minusSeconds(5));
     }
 
+    /**
+     * 处理电脑休眠、程序暂停等导致的轮询间隔异常变长。
+     * 如果继续按当前时间关闭，会把休眠期间也算成使用时间，所以这里用 lastPollAt 截断。
+     */
     private void closeSessionIfPollingStalled(LocalDateTime now, long nanoNow) {
         if (lastPollAt == null || lastPollNano == 0L) return;
         long gapSeconds = TimeUnit.NANOSECONDS.toSeconds(nanoNow - lastPollNano);
@@ -344,6 +365,10 @@ public class ForegroundMonitorService {
         );
     }
 
+    /**
+     * 从数据库刷新被监控应用列表，构建“进程名 -> 应用对象”的快速查找表。
+     * 缓存 30 秒刷新一次，避免每次轮询都访问数据库。
+     */
     private void refreshCache() {
         try {
             List<MonitoredApp> apps = monitoredAppDao.findAll();
@@ -367,6 +392,9 @@ public class ForegroundMonitorService {
         }
     }
 
+    /**
+     * 计算距离明天 00:01 的秒数，用于安排每日汇总任务。
+     */
     private long computeDelayToMidnight() {
         ZoneId zone = ZoneId.systemDefault();
         ZonedDateTime now = ZonedDateTime.now(zone);

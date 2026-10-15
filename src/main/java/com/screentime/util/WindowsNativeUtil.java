@@ -65,6 +65,7 @@ public class WindowsNativeUtil {
     }
 
     public static Optional<Long> getIdleSeconds() {
+        // GetLastInputInfo 返回系统最后一次键盘/鼠标输入时间，用于判断用户是否空闲。
         try {
             WinUser.LASTINPUTINFO info = new WinUser.LASTINPUTINFO();
             if (!User32.INSTANCE.GetLastInputInfo(info)) {
@@ -81,6 +82,7 @@ public class WindowsNativeUtil {
     }
 
     private static Optional<String> queryProcessImagePath(int pid) {
+        // 优先用 Windows API 查询完整路径；ProcessHandle 在某些权限场景下拿不到 command。
         WinNT.HANDLE process = Kernel32.INSTANCE.OpenProcess(
                 WinNT.PROCESS_QUERY_LIMITED_INFORMATION,
                 false,

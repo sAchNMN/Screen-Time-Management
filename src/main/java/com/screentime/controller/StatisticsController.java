@@ -48,6 +48,7 @@ public class StatisticsController {
 
     @FXML
     public void initialize() {
+        // 初始化今日统计表：配置列、配置应用图标单元格、绑定刷新按钮。
         tblToday.setItems(todayRows);
         tblToday.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
@@ -90,11 +91,13 @@ public class StatisticsController {
     }
 
     private void refreshData() {
+        // 手动刷新时清空图标缓存，确保刚启动或路径变化后图标可以重新获取。
         appIconCache.clear();
         refreshToday();
     }
 
     private void refreshToday() {
+        // 今日数据来源于 usage_records，DAO 会同时计算已结束会话和正在进行的会话。
         todayRows.clear();
         Map<Integer, Integer> usage = dao.getTodayUsage();
         if (usage.isEmpty()) {
@@ -158,6 +161,7 @@ public class StatisticsController {
     }
 
     private String findProcessPath(String processName) {
+        // 数据库只保存 processName；如果需要图标，这里从当前进程列表反查完整路径。
         return ProcessHandle.allProcesses()
                 .flatMap(ph -> ph.info().command().stream())
                 .filter(path -> {
@@ -174,6 +178,7 @@ public class StatisticsController {
     }
 
     public static class TodayRow {
+        // 表格行模型：Controller 内部使用，不需要单独建业务实体类。
         private final Image icon;
         private final String appName;
         private final String duration;
